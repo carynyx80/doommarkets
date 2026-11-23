@@ -93,9 +93,10 @@ export async function getTokens(): Promise<Token[]> {
   try {
     const j = await fetchJson("/tokens");
     const list = Array.isArray(j) ? j : j.tokens;
-    return Array.isArray(list) && list.length ? list.map(toToken) : mockTokens;
+    // With a live backend, show exactly what it returns (even an empty list) — never mock data.
+    return Array.isArray(list) ? list.map(toToken) : API_URL ? [] : mockTokens;
   } catch {
-    return mockTokens;
+    return API_URL ? [] : mockTokens;
   }
 }
 
@@ -104,7 +105,7 @@ export async function getToken(id: string): Promise<Token | undefined> {
     const j = await fetchJson(`/tokens/${id}`);
     return toToken(j.token ? { ...j.token, priceSeries: j.priceSeries ?? j.token.priceSeries } : j);
   } catch {
-    return mockTokens.find((t) => t.id === id);
+    return API_URL ? undefined : mockTokens.find((t) => t.id === id);
   }
 }
 
@@ -128,7 +129,7 @@ export async function getCreators(): Promise<Creator[]> {
   try {
     const j = await fetchJson("/creators");
     const list = Array.isArray(j) ? j : j.creators;
-    if (!Array.isArray(list) || !list.length) return mockCreators;
+    if (!Array.isArray(list)) return API_URL ? [] : mockCreators;
     return list.map((c: any) => ({
       ...(mockCreators[0] as Creator),
       handle: c.handle,
@@ -139,6 +140,6 @@ export async function getCreators(): Promise<Creator[]> {
       streak: Number(c.survived) || 0,
     }));
   } catch {
-    return mockCreators;
+    return API_URL ? [] : mockCreators;
   }
 }

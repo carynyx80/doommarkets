@@ -87,7 +87,16 @@ export default function Explore({ tokens, stats }: { tokens: Token[]; stats: Sta
           ))}
         </AnimatePresence>
       </motion.div>
-      {list.length === 0 && <p className="py-20 text-center text-sm text-white/40">No markets match.</p>}
+      {list.length === 0 && (
+        <div className="py-20 text-center">
+          <p className="text-sm text-white/40">{tokens.length === 0 ? "No launches yet. Be the first to launch a token with a bond." : "No markets match."}</p>
+          {tokens.length === 0 && (
+            <a href="/app/launch" className="btn-acid mt-6 inline-flex">
+              + Launch token
+            </a>
+          )}
+        </div>
+      )}
     </>
   );
 }

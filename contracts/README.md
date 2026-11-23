@@ -104,3 +104,11 @@ for d in ../web/src/abi ../backend/src/abi; do mkdir -p $d
   jq '.abi' out/DoomToken.sol/DoomToken.json > $d/DoomToken.json
 done
 ```
+
+## Deployments
+
+| Network | DoomLaunchpad | Deploy block | Tx |
+|---|---|---|---|
+| BNB Smart Chain (56) | `0xe3DDdAb89EA126f67eF2cDE2fFa95FCabFfbe6aa` | 135239830 | `0x67f1173094ebe91ca1ba7a3fd1ec98896e27a5484e3939c1868c52a89a9b655f` |
+
+Owner and fee treasury: `0x0DbFef7e227701671896B9Ef498D7Ce87F4E57e0`.
