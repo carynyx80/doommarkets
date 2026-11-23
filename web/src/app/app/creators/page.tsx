@@ -1,11 +1,15 @@
 import PageHeader from "@/components/app/PageHeader";
-import { getCreators } from "@/lib/api";
+import Link from "next/link";
+import { TokenAvatar } from "@/components/ui";
+import { getCreators, getTokens } from "@/lib/api";
 
 export const revalidate = 30;
 export const metadata = { title: "Creators — Doom Market" };
 
 export default async function Page() {
-  const creators = [...(await getCreators())].sort((a, b) => b.score - a.score);
+  const [rawCreators, tokens] = await Promise.all([getCreators(), getTokens()]);
+  const creators = [...rawCreators].sort((a, b) => b.score - a.score);
+  const byCreator = (h: string) => tokens.filter((t) => t.creator.toLowerCase() === h.toLowerCase()).slice(0, 4);
   return (
     <>
       <PageHeader
@@ -31,7 +35,14 @@ export default async function Page() {
                 </p>
               </div>
             </div>
-            <p className="h-display mt-5 text-4xl">{c.score}</p>
+            <div className="mt-4 flex gap-1.5">
+              {byCreator(c.handle).map((t) => (
+                <Link key={t.id} href={`/app/market/${t.id}`} title={`$${t.symbol}`}>
+                  <TokenAvatar token={t} className="h-8 w-8 rounded-lg text-base" />
+                </Link>
+              ))}
+            </div>
+            <p className="h-display mt-4 text-4xl">{c.score}</p>
             <p className="text-[11px] text-white/40">reputation score</p>
           </div>
         ))}
@@ -56,7 +67,14 @@ export default async function Page() {
                   <tr key={c.handle} className="border-b border-white/[0.04] transition hover:bg-white/[0.025]">
                     <td className="px-5 py-4 font-mono text-white/40">{String(i + 1).padStart(2, "0")}</td>
                     <td className="px-5 py-4 font-medium">
-                      {c.handle}
+                      <span className="inline-flex items-center gap-2 align-middle">
+                        <span className="flex -space-x-2">
+                          {byCreator(c.handle).slice(0, 3).map((t) => (
+                            <TokenAvatar key={t.id} token={t} className="h-7 w-7 rounded-lg text-sm ring-2 ring-[#07070a]" />
+                          ))}
+                        </span>
+                        {c.handle}
+                      </span>
                       {c.streak >= 3 && <span className="ml-2 rounded-full bg-acid/10 px-2 py-0.5 text-[10px] text-acid">🔥 {c.streak} streak</span>}
                     </td>
                     <td className="px-5 py-4 text-white/70">{c.launched}</td>

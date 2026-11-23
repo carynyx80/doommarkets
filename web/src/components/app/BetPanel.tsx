@@ -4,10 +4,10 @@ import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import { parseEther } from "viem";
-import { useAccount, useWriteContract } from "wagmi";
+import { useAccount, useSwitchChain, useWriteContract } from "wagmi";
 import { useToast } from "@/components/Toast";
 import { computeCommitment, loadCommit, randomSalt, saveCommit, type Side, type StoredCommit } from "@/lib/commit";
-import { MARKET_ADDRESS, contractsReady, marketAbi } from "@/lib/contracts";
+import { FEE_LABEL, MARKET_ADDRESS, TARGET_CHAIN, contractsReady, feeOfNum, marketAbi, txUrl } from "@/lib/contracts";
 import type { Token } from "@/lib/types";
 
 const Lock = ({ className = "h-4 w-4" }: { className?: string }) => (
@@ -19,7 +19,8 @@ const Lock = ({ className = "h-4 w-4" }: { className?: string }) => (
 
 export default function BetPanel({ token }: { token: Token }) {
   const toast = useToast();
-  const { address } = useAccount();
+  const { address, chainId } = useAccount();
+  const { switchChainAsync } = useSwitchChain();
   const { openConnectModal } = useConnectModal();
   const { writeContractAsync, isPending } = useWriteContract();
   const [side, setSide] = useState<Side>(1);
@@ -42,6 +43,7 @@ export default function BetPanel({ token }: { token: Token }) {
       return toast("Contracts deploying soon", "Your commitment was computed locally but nothing was sent on-chain.", "info");
     }
     try {
+      if (chainId !== TARGET_CHAIN.id) await switchChainAsync({ chainId: TARGET_CHAIN.id });
       const hash = await writeContractAsync({
         address: MARKET_ADDRESS,
         abi: marketAbi,
@@ -52,7 +54,7 @@ export default function BetPanel({ token }: { token: Token }) {
       const c: StoredCommit = { marketId: token.id, side, salt, user: address, commitment, amountBnb: amount, createdAt: Date.now() };
       saveCommit(c);
       setExisting(c);
-      toast("Sealed bet placed", `tx ${hash.slice(0, 10)}… — back up your salt!`, "success");
+      toast("Sealed bet placed", `tx ${hash.slice(0, 10)}… — back up your salt!`, "success", { href: txUrl(hash), label: "View on BscScan" });
     } catch (err) {
       toast("Transaction failed", (err as Error).message.split("\n")[0], "error");
     }
@@ -109,7 +111,14 @@ export default function BetPanel({ token }: { token: Token }) {
         </div>
       </label>
 
-      <div className="relative mt-5 rounded-2xl border border-white/[0.07] bg-black/40 p-4">
+      <div className="relative mt-4 flex justify-between rounded-xl border border-white/[0.07] bg-black/30 px-4 py-2.5 text-[12px]">
+        <span className="text-white/50">Bet fee ({FEE_LABEL})</span>
+        <span className="font-mono text-white/70">
+          {(Number(amount) > 0 ? feeOfNum(Number(amount)) : 0).toLocaleString("en-US", { maximumFractionDigits: 6 })} BNB
+        </span>
+      </div>
+
+      <div className="relative mt-4 rounded-2xl border border-white/[0.07] bg-black/40 p-4">
         <div className="flex items-start gap-3">
           <span className="mt-0.5 text-acid">
             <Lock />

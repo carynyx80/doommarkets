@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useAccount, useWriteContract } from "wagmi";
 import { useToast } from "@/components/Toast";
+import { TokenAvatar } from "@/components/ui";
 import { loadAllCommits, saveCommit, type StoredCommit } from "@/lib/commit";
 import { MARKET_ADDRESS, contractsReady, marketAbi } from "@/lib/contracts";
 import { mockTokens } from "@/lib/mock";
@@ -91,7 +92,7 @@ export default function Portfolio() {
             return (
               <div key={c.marketId} className="card flex flex-col gap-4 p-5 md:flex-row md:items-center md:justify-between">
                 <div className="flex min-w-0 items-center gap-3">
-                  <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-white/10 bg-white/[0.04] text-2xl">{t?.emoji ?? "💀"}</span>
+                  <TokenAvatar token={t ?? { emoji: "💀", symbol: "?" }} />
                   <div className="min-w-0">
                     <Link href={`/app/market/${c.marketId}`} className="font-semibold hover:text-acid">
                       {t ? `${t.name} ($${t.symbol})` : `Market #${c.marketId}`}

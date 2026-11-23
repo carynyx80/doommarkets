@@ -9,17 +9,22 @@ interface T {
   title: string;
   body?: string;
   kind: Kind;
+  link?: ToastLink;
+}
+export interface ToastLink {
+  href: string;
+  label: string;
 }
 
-const Ctx = createContext<(title: string, body?: string, kind?: Kind) => void>(() => {});
+const Ctx = createContext<(title: string, body?: string, kind?: Kind, link?: ToastLink) => void>(() => {});
 export const useToast = () => useContext(Ctx);
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<T[]>([]);
-  const push = useCallback((title: string, body?: string, kind: Kind = "info") => {
+  const push = useCallback((title: string, body?: string, kind: Kind = "info", link?: ToastLink) => {
     const id = Date.now() + Math.random();
-    setItems((s) => [...s, { id, title, body, kind }]);
-    setTimeout(() => setItems((s) => s.filter((t) => t.id !== id)), 4500);
+    setItems((s) => [...s, { id, title, body, kind, link }]);
+    setTimeout(() => setItems((s) => s.filter((t) => t.id !== id)), link ? 9000 : 4500);
   }, []);
   return (
     <Ctx.Provider value={push}>
@@ -43,6 +48,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                 <div>
                   <p className="text-sm font-medium text-white">{t.title}</p>
                   {t.body && <p className="mt-0.5 text-xs text-white/55">{t.body}</p>}
+                  {t.link && (
+                    <a href={t.link.href} target="_blank" rel="noreferrer" className="mt-1 inline-block text-xs text-acid underline-offset-2 hover:underline">
+                      {t.link.label} ↗
+                    </a>
+                  )}
                 </div>
               </div>
             </motion.div>

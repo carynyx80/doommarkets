@@ -44,6 +44,11 @@ export const mockTokens: Token[] = raw.map((r, i) => {
     name,
     symbol,
     emoji,
+    image: null,
+    description: `${name} — a bonded memecoin with a sealed survival market. Survive above the target or the bond pays holders.`,
+    website: "",
+    twitter: "",
+    telegram: "",
     creator,
     creatorScore: 40 + ((i * 37) % 60),
     address: `0x${((i + 11) * 2654435761).toString(16).padStart(40, "d")}`,
@@ -69,6 +74,7 @@ export const mockStats: Stats = {
   sealedBets: 38417,
   survivalRate: 0.31,
   paidOutBnb: 2207.4,
+  feesBnb: 18.6,
 };
 
 export const mockCreators: Creator[] = [

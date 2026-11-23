@@ -4,7 +4,12 @@ export interface Token {
   id: string;
   name: string;
   symbol: string;
-  emoji: string;
+  emoji: string; // fallback when no image
+  image?: string | null;
+  description: string;
+  website: string;
+  twitter: string;
+  telegram: string;
   creator: string; // anonymous handle
   creatorScore: number;
   address: string;
@@ -29,6 +34,7 @@ export interface Stats {
   sealedBets: number;
   survivalRate: number; // 0..1
   paidOutBnb: number;
+  feesBnb: number;
 }
 
 export interface Creator {

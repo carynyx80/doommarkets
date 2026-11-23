@@ -2,7 +2,7 @@ import { mockCreators, mockStats, mockTokens } from "./mock";
 import type { Creator, MarketStatus, Stats, Token } from "./types";
 import { BNB_USD } from "./contracts";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "");
+export const API_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "");
 const EMOJI = ["🐸", "💀", "🕯️", "🦍", "🔥", "🧪", "🐶", "🪦", "🚀", "🧻", "👁️", "⚰️"];
 
 async function fetchJson(path: string): Promise<any> {
@@ -16,6 +16,38 @@ async function fetchJson(path: string): Promise<any> {
   } finally {
     clearTimeout(t);
   }
+}
+
+/** Make relative upload paths (e.g. "/uploads/x.png") absolute against the API origin. */
+export function resolveUrl(u: string): string {
+  if (/^(https?:|data:|ipfs:|blob:)/i.test(u)) return u.startsWith("ipfs://") ? `https://ipfs.io/ipfs/${u.slice(7)}` : u;
+  return API_URL ? `${API_URL}${u.startsWith("/") ? "" : "/"}${u}` : u;
+}
+
+export const UPLOAD_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"];
+export const UPLOAD_MAX_BYTES = 2 * 1024 * 1024;
+
+/** POST /upload (multipart "file") → absolute image URL. Reports progress 0..1. */
+export function uploadImage(file: File, onProgress?: (p: number) => void): Promise<string> {
+  return new Promise((resolve, reject) => {
+    if (!API_URL) return reject(new Error("Upload service not configured (NEXT_PUBLIC_API_URL)."));
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${API_URL}/upload`);
+    xhr.upload.onprogress = (e) => e.lengthComputable && onProgress?.(e.loaded / e.total);
+    xhr.onload = () => {
+      try {
+        const j = JSON.parse(xhr.responseText || "{}");
+        if (xhr.status >= 200 && xhr.status < 300 && typeof j.url === "string") resolve(resolveUrl(j.url));
+        else reject(new Error(j.error || `Upload failed (HTTP ${xhr.status})`));
+      } catch {
+        reject(new Error(`Upload failed (HTTP ${xhr.status})`));
+      }
+    };
+    xhr.onerror = () => reject(new Error("Network error while uploading."));
+    const fd = new FormData();
+    fd.append("file", file);
+    xhr.send(fd);
+  });
 }
 
 /** Map a backend token (BNB-denominated) into the UI Token shape (USD). */
@@ -33,6 +65,11 @@ function toToken(b: any): Token {
     name: b.name,
     symbol: b.symbol,
     emoji: EMOJI[Number(id) % EMOJI.length] ?? "🪙",
+    image: typeof b.image === "string" && b.image ? resolveUrl(b.image) : null,
+    description: b.description ?? "",
+    website: b.website ?? "",
+    twitter: b.twitter ?? "",
+    telegram: b.telegram ?? "",
     creator: b.creator ?? "anon",
     creatorScore: 0,
     address: b.token ?? "",
@@ -80,6 +117,7 @@ export async function getStats(): Promise<Stats> {
       sealedBets: Number(s.totalBets) || 0,
       survivalRate: Number(s.survivalRate) || 0,
       paidOutBnb: Number(s.totalVolume) || 0,
+      feesBnb: Number(s.feesBnb) || 0,
     };
   } catch {
     return mockStats;

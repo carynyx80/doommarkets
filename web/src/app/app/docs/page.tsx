@@ -14,7 +14,8 @@ const sections: [string, string[]][] = [
   [
     "Launching a token",
     [
-      "Choose a name, symbol, bond (min 0.1 BNB), target market cap and a duration of 3, 7, 14 or 30 days.",
+      "Upload a square image (PNG/JPG/GIF/WEBP, max 2MB), then choose a name (≤32 chars), ticker (≤10), description, optional website / X / Telegram links, a bond (min 0.1 BNB or the on-chain minBond), a USD survival target and a duration of 3, 7, 14 or 30 days.",
+      "Optionally add a dev buy: BNB that buys your own token as the very first trade on the curve, in the same transaction as the launch.",
       "The token trades on a bonding curve from launch. The bond is held by the market contract until resolution.",
     ],
   ],
@@ -31,13 +32,16 @@ const sections: [string, string[]][] = [
   ],
   [
     "Fees",
-    ["A small protocol fee on launches and winnings goes to the treasury. Fee parameters are set in the contracts and shown before you sign."],
+    [
+      "0.1% flat fee on launches, trades and bets. That's 0.1% of the creator bond at launch, 0.1% of every bonding-curve buy and sell (including the optional dev buy), and 0.1% of every sealed bet.",
+      `All fees are sent to the company wallet ${TREASURY_ADDRESS}. Each fee is shown in the launch summary, trade panel and bet panel before you sign.`,
+    ],
   ],
 ];
 
 export default function Page() {
   const rows: [string, string][] = [
-    ["Treasury", TREASURY_ADDRESS],
+    ["Fee wallet (0.1%)", TREASURY_ADDRESS],
     ["Launchpad", LAUNCHPAD_ADDRESS ?? "deploying soon"],
     ["Prediction market", MARKET_ADDRESS ?? "deploying soon"],
   ];

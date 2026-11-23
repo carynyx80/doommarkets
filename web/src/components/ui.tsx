@@ -2,7 +2,7 @@
 
 import { motion, type HTMLMotionProps } from "framer-motion";
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type { Token } from "@/lib/types";
 import { usd } from "@/lib/format";
 
@@ -32,6 +32,28 @@ export function Reveal({ children, delay = 0, y = 24, ...rest }: { children: Rea
     >
       {children}
     </motion.div>
+  );
+}
+
+/** Rounded-square token image with emoji fallback (missing or broken image). */
+export function TokenAvatar({
+  token,
+  className = "h-11 w-11 rounded-2xl text-2xl",
+}: {
+  token: Pick<Token, "emoji" | "symbol"> & { image?: string | null };
+  className?: string;
+}) {
+  const [broken, setBroken] = useState(false);
+  const showImg = !!token.image && !broken;
+  return (
+    <span className={`grid shrink-0 place-items-center overflow-hidden border border-white/10 bg-white/[0.04] ${className}`}>
+      {showImg ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={token.image!} alt={token.symbol} className="h-full w-full object-cover" loading="lazy" onError={() => setBroken(true)} />
+      ) : (
+        <span aria-hidden>{token.emoji || "💀"}</span>
+      )}
+    </span>
   );
 }
 
@@ -72,7 +94,7 @@ export function Marquee({ tokens }: { tokens: Token[] }) {
               href={`/app/market/${t.id}`}
               className="glass flex items-center gap-3 rounded-2xl px-4 py-2.5 transition hover:border-white/20"
             >
-              <span className="text-xl">{t.emoji}</span>
+              <TokenAvatar token={t} className="h-8 w-8 rounded-lg text-xl" />
               <div className="leading-tight">
                 <p className="text-sm font-semibold">${t.symbol}</p>
                 <p className="text-[11px] text-white/45">{usd(t.marketCap)} mcap</p>

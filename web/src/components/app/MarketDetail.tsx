@@ -2,10 +2,96 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { StatusPill } from "@/components/ui";
+import { useToast } from "@/components/Toast";
+import { StatusPill, TokenAvatar } from "@/components/ui";
+import { tokenUrl } from "@/lib/contracts";
 import { bnb, countdown, num, short, usd } from "@/lib/format";
 import type { Token } from "@/lib/types";
 import BetPanel from "./BetPanel";
+import TradePanel from "./TradePanel";
+
+const normUrl = (v: string, base?: string) => {
+  const t = v.trim();
+  if (!t) return "";
+  if (/^https?:\/\//i.test(t)) return t;
+  if (base && t.startsWith("@")) return `${base}${t.slice(1)}`;
+  if (base && !t.includes(".") && !t.includes("/")) return `${base}${t}`;
+  return `https://${t}`;
+};
+
+const icons = {
+  website: (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" />
+    </svg>
+  ),
+  twitter: (
+    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="currentColor">
+      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.45-6.231Zm-1.161 17.52h1.833L7.084 4.126H5.117l11.966 15.644Z" />
+    </svg>
+  ),
+  telegram: (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
+      <path d="M9.78 15.2 9.6 19.3c.4 0 .57-.17.78-.37l1.87-1.79 3.88 2.84c.71.39 1.22.19 1.41-.66l2.55-11.97c.26-1.05-.39-1.5-1.09-1.25L2.98 10.3c-1.02.41-1.01.98-.18 1.23l3.83 1.2 8.9-5.61c.42-.26.8-.12.49.16" />
+    </svg>
+  ),
+};
+
+function Socials({ token }: { token: Token }) {
+  const links = [
+    ["website", normUrl(token.website)],
+    ["twitter", normUrl(token.twitter, "https://x.com/")],
+    ["telegram", normUrl(token.telegram, "https://t.me/")],
+  ] as const;
+  const shown = links.filter(([, u]) => u);
+  if (!shown.length) return null;
+  return (
+    <div className="flex gap-1.5">
+      {shown.map(([k, u]) => (
+        <a
+          key={k}
+          href={u}
+          target="_blank"
+          rel="noreferrer noopener"
+          aria-label={k}
+          className="grid h-8 w-8 place-items-center rounded-full border border-white/10 bg-white/[0.03] text-white/60 transition hover:border-acid/40 hover:text-acid"
+        >
+          {icons[k]}
+        </a>
+      ))}
+    </div>
+  );
+}
+
+function AddressChip({ address }: { address: string }) {
+  const toast = useToast();
+  const valid = /^0x[0-9a-fA-F]{40}$/.test(address);
+  if (!valid) return null;
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.03] py-0.5 pl-2.5 pr-1 font-mono text-[11px] text-white/60">
+      CA {short(address)}
+      <button
+        onClick={() => {
+          navigator.clipboard?.writeText(address).then(
+            () => toast("Address copied", address, "success"),
+            () => toast("Copy failed", undefined, "error"),
+          );
+        }}
+        className="rounded-full px-1.5 py-0.5 hover:bg-white/10 hover:text-white"
+        aria-label="Copy token address"
+      >
+        <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2">
+          <rect x="9" y="9" width="12" height="12" rx="2" />
+          <path d="M5 15V5a2 2 0 0 1 2-2h10" />
+        </svg>
+      </button>
+      <a href={tokenUrl(address)} target="_blank" rel="noreferrer" className="rounded-full px-1.5 py-0.5 hover:bg-white/10 hover:text-acid" aria-label="View on BscScan">
+        ↗
+      </a>
+    </span>
+  );
+}
 
 function CurveChart({ token }: { token: Token }) {
   const [hover, setHover] = useState<number | null>(null);
@@ -97,19 +183,24 @@ export default function MarketDetail({ token }: { token: Token }) {
         ← All markets
       </Link>
       <div className="mb-8 flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
-        <div className="flex items-center gap-4">
-          <span className="grid h-16 w-16 shrink-0 place-items-center rounded-3xl border border-white/10 bg-white/[0.04] text-4xl">{token.emoji}</span>
+        <div className="flex min-w-0 items-start gap-4">
+          <TokenAvatar token={token} className="h-20 w-20 rounded-3xl text-4xl sm:h-24 sm:w-24" />
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="h-display text-3xl sm:text-4xl">{token.name}</h1>
               <StatusPill status={token.status} />
             </div>
             <p className="mt-1 text-sm text-white/45">
-              ${token.symbol} · by <Link href="/app/creators" className="text-white/75 hover:text-acid">{token.creator}</Link> · <span className="font-mono">{short(token.address)}</span>
+              ${token.symbol} · by <Link href="/app/creators" className="text-white/75 hover:text-acid">{token.creator}</Link>
             </p>
+            {token.description && <p className="mt-2 max-w-xl text-sm leading-relaxed text-white/60">{token.description}</p>}
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <AddressChip address={token.address} />
+              <Socials token={token} />
+            </div>
           </div>
         </div>
-        <div className="card flex items-center gap-4 px-5 py-4">
+        <div className="card flex shrink-0 items-center gap-4 px-5 py-4">
           <div>
             <p className="text-[11px] text-white/45">{token.status === "open" ? "Bets close in" : "Market"}</p>
             <p className="h-display font-mono text-2xl tabular-nums" suppressHydrationWarning>
@@ -159,7 +250,8 @@ export default function MarketDetail({ token }: { token: Token }) {
             </div>
           </div>
         </div>
-        <div className="space-y-6 lg:sticky lg:top-6 lg:self-start">
+        <div className="space-y-6">
+          <TradePanel token={token} />
           <BetPanel token={token} />
         </div>
       </div>

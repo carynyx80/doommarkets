@@ -286,6 +286,7 @@ const faqs = [
   ["What if I lose my salt?", "Your salt is stored locally in your browser. Back it up — without it you can’t reveal, and an unrevealed bet forfeits. We show a warning every time you bet."],
   ["Can creators see who bet against them?", "No. Positions stay sealed until close, and with stealth wallets they can’t be linked to your main address even after."],
   ["Is this compliant?", "View keys let you selectively disclose your activity to an auditor, exchange or tax tool, without making it public."],
+  ["What are the fees?", "A 0.1% flat fee on launches, trades and bets: 0.1% of the creator bond at launch, 0.1% of every buy and sell, and 0.1% of every sealed bet. Fees go to the company wallet 0x0DbF…57e0 and are shown before you sign."],
   ["Which wallets work?", "MetaMask, Binance Wallet, Trust, OKX, Bitget, SafePal, TokenPocket, Rabby, Coinbase Wallet and anything WalletConnect-compatible on BNB Chain."],
 ];
 

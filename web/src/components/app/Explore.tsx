@@ -3,7 +3,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { Sparkline, StatusPill } from "@/components/ui";
+import { Sparkline, StatusPill, TokenAvatar } from "@/components/ui";
 import { bnb, num, usd } from "@/lib/format";
 import type { Stats, Token } from "@/lib/types";
 import PageHeader from "./PageHeader";
@@ -16,7 +16,7 @@ export default function Explore({ tokens, stats }: { tokens: Token[]; stats: Sta
   const [q, setQ] = useState("");
 
   const list = useMemo(() => {
-    let l = tokens.filter((t) => `${t.name} ${t.symbol} ${t.creator}`.toLowerCase().includes(q.toLowerCase()));
+    let l = tokens.filter((t) => `${t.name} ${t.symbol} ${t.creator} ${t.description}`.toLowerCase().includes(q.toLowerCase()));
     if (f === "Open") l = l.filter((t) => t.status === "open");
     if (f === "Ending soon") l = l.filter((t) => t.status === "open").sort((a, b) => a.endsAt - b.endsAt);
     if (f === "Near target") l = l.filter((t) => t.status === "open").sort((a, b) => b.marketCap / b.targetMcap - a.marketCap / a.targetMcap);
@@ -100,7 +100,7 @@ export function MarketCard({ t }: { t: Token }) {
     <Link href={`/app/market/${t.id}`} className="card group block p-5 hover:-translate-y-0.5 hover:bg-white/[0.045]">
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
-          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-white/10 bg-white/[0.04] text-2xl">{t.emoji}</span>
+          <TokenAvatar token={t} />
           <div className="min-w-0">
             <p className="truncate font-semibold">{t.name}</p>
             <p className="truncate text-xs text-white/45">
