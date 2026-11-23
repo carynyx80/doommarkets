@@ -11,11 +11,11 @@ import {DoomToken} from "./DoomToken.sol";
 
 /// @title DoomLaunchpad
 /// @notice Memecoin launchpad on BNB Chain. Every launch gets:
-///         - a pump-style virtual-reserve constant-product bonding curve (1% fee to treasury)
+///         - a pump-style virtual-reserve constant-product bonding curve
 ///         - a time-weighted average market-cap accumulator
 ///         - a sealed (commit-reveal) survival prediction market, settled on the TWAP market cap
-/// @dev    All protocol fees accrue to `protocolFeesAccrued` and are pushed to the immutable
-///         treasury via `withdrawFees()` (callable by anyone). User funds are always pulled.
+/// @dev    A flat 0.1% (FEE_BPS) fee is charged on every launch bond, buy, sell and bet, and is
+///         pushed to the immutable treasury in the same transaction. Winnings/bonds are pulled.
 contract DoomLaunchpad is Ownable2Step, Pausable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
@@ -24,8 +24,18 @@ contract DoomLaunchpad is Ownable2Step, Pausable, ReentrancyGuard {
     // ---------------------------------------------------------------------
 
     uint256 public constant BPS = 10_000;
-    uint256 public constant TRADE_FEE_BPS = 100; // 1%
-    uint256 public constant MARKET_FEE_BPS = 200; // 2% of the losing pool
+    uint256 public constant FEE_BPS = 10; // 0.1% on launch bond, buy, sell and bet
+
+    uint8 public constant FEE_KIND_LAUNCH = 0;
+    uint8 public constant FEE_KIND_BUY = 1;
+    uint8 public constant FEE_KIND_SELL = 2;
+    uint8 public constant FEE_KIND_BET = 3;
+
+    uint256 public constant MAX_NAME_LEN = 32;
+    uint256 public constant MAX_SYMBOL_LEN = 10;
+    uint256 public constant MAX_IMAGE_LEN = 256;
+    uint256 public constant MAX_DESCRIPTION_LEN = 512;
+    uint256 public constant MAX_SOCIAL_LEN = 128;
 
     uint256 public constant VIRTUAL_BNB = 30 ether;
     uint256 public constant VIRTUAL_TOKENS = 1_073_000_000 ether;
@@ -51,6 +61,26 @@ contract DoomLaunchpad is Ownable2Step, Pausable, ReentrancyGuard {
         Active,
         Survived,
         Died
+    }
+
+    struct LaunchParams {
+        string name;
+        string symbol;
+        string imageURI;
+        string description;
+        string website;
+        string twitter;
+        string telegram;
+        uint256 targetMcap;
+        uint256 duration;
+    }
+
+    struct Metadata {
+        string imageURI;
+        string description;
+        string website;
+        string twitter;
+        string telegram;
     }
 
     struct Launch {
@@ -84,7 +114,7 @@ contract DoomLaunchpad is Ownable2Step, Pausable, ReentrancyGuard {
         uint256 yesPool; // revealed YES stake
         uint256 noPool; // revealed NO stake
         uint256 winPool; // set at settle
-        uint256 distributable; // losers + forfeits (+bond if died) minus fee, set at settle
+        uint256 distributable; // losers + forfeits (+bond if died), set at settle
         uint256 twapMcap; // set at settle
         bool refundMode; // no winners revealed: revealed stakes refundable
         bool bondClaimed;
@@ -104,11 +134,11 @@ contract DoomLaunchpad is Ownable2Step, Pausable, ReentrancyGuard {
 
     uint256 public minBond = 0.05 ether;
     uint256 public launchCount;
-    uint256 public protocolFeesAccrued;
 
     mapping(uint256 => Launch) internal _launches;
     mapping(uint256 => Curve) internal _curves;
     mapping(uint256 => Market) internal _markets;
+    mapping(uint256 => Metadata) internal _metadata;
     mapping(uint256 => mapping(bytes32 => Commit)) public commits;
     mapping(uint256 => mapping(address => uint256)) public yesStake;
     mapping(uint256 => mapping(address => uint256)) public noStake;
@@ -135,6 +165,10 @@ contract DoomLaunchpad is Ownable2Step, Pausable, ReentrancyGuard {
         uint256 creatorLaunched,
         uint256 creatorSurvived
     );
+    event LaunchMetadata(
+        uint256 indexed id, string imageURI, string description, string website, string twitter, string telegram
+    );
+    event FeePaid(uint256 indexed id, uint8 indexed kind, address indexed payer, uint256 amount);
     event Trade(uint256 indexed id, address indexed trader, bool isBuy, uint256 bnb, uint256 tokens, uint256 priceAfter);
     event Committed(uint256 indexed id, address indexed user, bytes32 commitment, uint256 amount);
     event Revealed(uint256 indexed id, address indexed user, uint8 side, uint256 amount);
@@ -152,7 +186,6 @@ contract DoomLaunchpad is Ownable2Step, Pausable, ReentrancyGuard {
     );
     event Claimed(uint256 indexed id, address indexed user, uint256 amount);
     event BondClaimed(uint256 indexed id, address indexed creator, uint256 amount);
-    event FeesWithdrawn(address indexed treasury, uint256 amount);
     event MinBondUpdated(uint256 oldMinBond, uint256 newMinBond);
 
     // ---------------------------------------------------------------------
@@ -180,6 +213,9 @@ contract DoomLaunchpad is Ownable2Step, Pausable, ReentrancyGuard {
     error NothingToClaim();
     error NotCreator();
     error TransferFailed();
+    error BadName();
+    error BadSymbol();
+    error MetadataTooLong();
 
     // ---------------------------------------------------------------------
     // Constructor / admin
@@ -203,44 +239,42 @@ contract DoomLaunchpad is Ownable2Step, Pausable, ReentrancyGuard {
         _unpause();
     }
 
-    /// @notice Push all accrued protocol fees to the immutable treasury. Callable by anyone.
-    function withdrawFees() external nonReentrant {
-        uint256 amount = protocolFeesAccrued;
-        if (amount == 0) revert ZeroAmount();
-        protocolFeesAccrued = 0;
-        _send(treasury, amount);
-        emit FeesWithdrawn(treasury, amount);
-    }
-
     // ---------------------------------------------------------------------
     // Launch
     // ---------------------------------------------------------------------
 
-    function createLaunch(string calldata name, string calldata symbol, uint256 targetMcapWei, uint256 durationSecs)
+    /// @notice Create a launch. msg.value = bond + devBuyWei. The 0.1% launch fee is taken from the
+    ///         bond (stored bond is net). If devBuyWei > 0, buys for msg.sender in the same tx.
+    function createLaunch(LaunchParams calldata p, uint256 devBuyWei, uint256 devBuyMinOut)
         external
         payable
         whenNotPaused
         nonReentrant
         returns (uint256 id)
     {
-        if (msg.value < minBond) revert BondTooLow();
-        if (durationSecs < MIN_DURATION || durationSecs > MAX_DURATION) revert BadDuration();
-        if (targetMcapWei == 0) revert BadTarget();
+        if (msg.value < devBuyWei) revert BondTooLow();
+        uint256 grossBond = msg.value - devBuyWei;
+        if (grossBond < minBond) revert BondTooLow();
+        if (p.duration < MIN_DURATION || p.duration > MAX_DURATION) revert BadDuration();
+        if (p.targetMcap == 0) revert BadTarget();
+        _validateParams(p);
 
         id = ++launchCount;
-        DoomToken token = new DoomToken(name, symbol);
+        DoomToken token = new DoomToken(p.name, p.symbol, p.imageURI);
 
-        uint64 nowTs = uint64(block.timestamp);
-        uint64 deadline = uint64(block.timestamp + durationSecs);
-        uint64 revealEnd = uint64(block.timestamp + durationSecs + REVEAL_WINDOW);
+        uint256 fee = (grossBond * FEE_BPS) / BPS;
+        uint256 bond = grossBond - fee;
+
+        uint64 deadline = uint64(block.timestamp + p.duration);
+        uint64 revealEnd = uint64(block.timestamp + p.duration + REVEAL_WINDOW);
 
         _launches[id] = Launch({
             id: id,
             token: address(token),
             creator: msg.sender,
-            bond: msg.value,
-            targetMcap: targetMcapWei,
-            createdAt: nowTs,
+            bond: bond,
+            targetMcap: p.targetMcap,
+            createdAt: uint64(block.timestamp),
             deadline: deadline,
             commitEnd: deadline,
             revealEnd: revealEnd,
@@ -248,8 +282,16 @@ contract DoomLaunchpad is Ownable2Step, Pausable, ReentrancyGuard {
         });
 
         Curve storage c = _curves[id];
-        c.lastTs = nowTs;
-        c.twapStart = uint64(block.timestamp + durationSecs - durationSecs / TWAP_DIVISOR);
+        c.lastTs = uint64(block.timestamp);
+        c.twapStart = uint64(block.timestamp + p.duration - p.duration / TWAP_DIVISOR);
+
+        _metadata[id] = Metadata({
+            imageURI: p.imageURI,
+            description: p.description,
+            website: p.website,
+            twitter: p.twitter,
+            telegram: p.telegram
+        });
 
         tokenToLaunch[address(token)] = id;
         uint256 launched = ++launchedCount[msg.sender];
@@ -258,15 +300,20 @@ contract DoomLaunchpad is Ownable2Step, Pausable, ReentrancyGuard {
             id,
             address(token),
             msg.sender,
-            name,
-            symbol,
-            msg.value,
-            targetMcapWei,
+            p.name,
+            p.symbol,
+            bond,
+            p.targetMcap,
             deadline,
             revealEnd,
             launched,
             survivedCount[msg.sender]
         );
+        emit LaunchMetadata(id, p.imageURI, p.description, p.website, p.twitter, p.telegram);
+
+        _payFee(id, FEE_KIND_LAUNCH, msg.sender, fee);
+
+        if (devBuyWei > 0) _buy(id, msg.sender, devBuyWei, devBuyMinOut);
     }
 
     // ---------------------------------------------------------------------
@@ -274,39 +321,7 @@ contract DoomLaunchpad is Ownable2Step, Pausable, ReentrancyGuard {
     // ---------------------------------------------------------------------
 
     function buy(uint256 id, uint256 minOut) external payable whenNotPaused nonReentrant returns (uint256 tokensOut) {
-        Launch storage l = _launch(id);
-        if (msg.value == 0) revert ZeroAmount();
-        Curve storage c = _curves[id];
-        _accumulate(c, l.deadline);
-
-        uint256 remaining = CURVE_SUPPLY - c.tokensSold;
-        if (remaining == 0) revert CurveSoldOut();
-
-        uint256 vBnb = VIRTUAL_BNB + c.realBnb;
-        uint256 vTok = VIRTUAL_TOKENS - c.tokensSold;
-
-        uint256 fee = (msg.value * TRADE_FEE_BPS) / BPS;
-        uint256 netIn = msg.value - fee;
-        tokensOut = (vTok * netIn) / (vBnb + netIn);
-        uint256 refund;
-
-        if (tokensOut > remaining) {
-            tokensOut = remaining;
-            // BNB needed (rounded up) to take exactly `remaining` tokens
-            netIn = (vBnb * remaining + (vTok - remaining) - 1) / (vTok - remaining);
-            fee = (netIn * TRADE_FEE_BPS + (BPS - TRADE_FEE_BPS) - 1) / (BPS - TRADE_FEE_BPS);
-            refund = msg.value - netIn - fee;
-        }
-        if (tokensOut == 0 || tokensOut < minOut) revert Slippage();
-
-        c.realBnb += netIn;
-        c.tokensSold += tokensOut;
-        protocolFeesAccrued += fee;
-
-        IERC20(l.token).safeTransfer(msg.sender, tokensOut);
-        if (refund > 0) _send(msg.sender, refund);
-
-        emit Trade(id, msg.sender, true, msg.value - refund, tokensOut, _price(c));
+        tokensOut = _buy(id, msg.sender, msg.value, minOut);
     }
 
     function sell(uint256 id, uint256 amount, uint256 minOut) external whenNotPaused nonReentrant returns (uint256 bnbOut) {
@@ -320,15 +335,15 @@ contract DoomLaunchpad is Ownable2Step, Pausable, ReentrancyGuard {
 
         uint256 gross = (vBnb * amount) / (vTok + amount);
         if (gross > c.realBnb) revert InsufficientReserve();
-        uint256 fee = (gross * TRADE_FEE_BPS) / BPS;
+        uint256 fee = (gross * FEE_BPS) / BPS;
         bnbOut = gross - fee;
         if (bnbOut == 0 || bnbOut < minOut) revert Slippage();
 
         c.realBnb -= gross;
         c.tokensSold -= amount;
-        protocolFeesAccrued += fee;
 
         IERC20(l.token).safeTransferFrom(msg.sender, address(this), amount);
+        _payFee(id, FEE_KIND_SELL, msg.sender, fee);
         _send(msg.sender, bnbOut);
 
         emit Trade(id, msg.sender, false, bnbOut, amount, _price(c));
@@ -347,11 +362,14 @@ contract DoomLaunchpad is Ownable2Step, Pausable, ReentrancyGuard {
         Commit storage cm = commits[id][commitment];
         if (cm.user != address(0)) revert BadCommitment();
 
+        uint256 fee = (msg.value * FEE_BPS) / BPS;
+        uint256 stake = msg.value - fee;
         cm.user = msg.sender;
-        cm.amount = msg.value;
-        _markets[id].totalCommitted += msg.value;
+        cm.amount = stake;
+        _markets[id].totalCommitted += stake;
 
-        emit Committed(id, msg.sender, commitment, msg.value);
+        emit Committed(id, msg.sender, commitment, stake);
+        _payFee(id, FEE_KIND_BET, msg.sender, fee);
     }
 
     function reveal(uint256 id, uint8 side, bytes32 salt) external nonReentrant {
@@ -411,11 +429,9 @@ contract DoomLaunchpad is Ownable2Step, Pausable, ReentrancyGuard {
             m.refundMode = true;
             fee = forfeited + (survived ? 0 : l.bond);
         } else {
-            fee = (losers * MARKET_FEE_BPS) / BPS;
             m.winPool = winPool;
-            m.distributable = losers - fee;
+            m.distributable = losers;
         }
-        protocolFeesAccrued += fee;
 
         emit Settled(
             id,
@@ -429,6 +445,7 @@ contract DoomLaunchpad is Ownable2Step, Pausable, ReentrancyGuard {
             launchedCount[l.creator],
             survivedCount[l.creator]
         );
+        if (fee > 0) _send(treasury, fee);
     }
 
     function claim(uint256 id) external nonReentrant returns (uint256 amount) {
@@ -471,6 +488,10 @@ contract DoomLaunchpad is Ownable2Step, Pausable, ReentrancyGuard {
         return _markets[id];
     }
 
+    function getMetadata(uint256 id) external view returns (Metadata memory) {
+        return _metadata[id];
+    }
+
     function claimable(uint256 id, address user) public view returns (uint256) {
         Launch storage l = _launches[id];
         if (l.state == LaunchState.Active || claimed[id][user]) return 0;
@@ -507,7 +528,7 @@ contract DoomLaunchpad is Ownable2Step, Pausable, ReentrancyGuard {
 
     function quoteBuy(uint256 id, uint256 bnbIn) external view returns (uint256 tokensOut) {
         Curve storage c = _curves[id];
-        uint256 netIn = bnbIn - (bnbIn * TRADE_FEE_BPS) / BPS;
+        uint256 netIn = bnbIn - (bnbIn * FEE_BPS) / BPS;
         uint256 vBnb = VIRTUAL_BNB + c.realBnb;
         uint256 vTok = VIRTUAL_TOKENS - c.tokensSold;
         tokensOut = (vTok * netIn) / (vBnb + netIn);
@@ -521,12 +542,67 @@ contract DoomLaunchpad is Ownable2Step, Pausable, ReentrancyGuard {
         uint256 vTok = VIRTUAL_TOKENS - c.tokensSold;
         uint256 gross = (vBnb * amount) / (vTok + amount);
         if (gross > c.realBnb) return 0;
-        bnbOut = gross - (gross * TRADE_FEE_BPS) / BPS;
+        bnbOut = gross - (gross * FEE_BPS) / BPS;
     }
 
     // ---------------------------------------------------------------------
     // Internal
     // ---------------------------------------------------------------------
+
+    function _buy(uint256 id, address buyer, uint256 value, uint256 minOut) internal returns (uint256 tokensOut) {
+        Launch storage l = _launch(id);
+        if (value == 0) revert ZeroAmount();
+        Curve storage c = _curves[id];
+        _accumulate(c, l.deadline);
+
+        uint256 remaining = CURVE_SUPPLY - c.tokensSold;
+        if (remaining == 0) revert CurveSoldOut();
+
+        uint256 vBnb = VIRTUAL_BNB + c.realBnb;
+        uint256 vTok = VIRTUAL_TOKENS - c.tokensSold;
+
+        uint256 fee = (value * FEE_BPS) / BPS;
+        uint256 netIn = value - fee;
+        tokensOut = (vTok * netIn) / (vBnb + netIn);
+        uint256 refund;
+
+        if (tokensOut > remaining) {
+            tokensOut = remaining;
+            // BNB needed (rounded up) to take exactly `remaining` tokens
+            netIn = (vBnb * remaining + (vTok - remaining) - 1) / (vTok - remaining);
+            fee = (netIn * FEE_BPS + (BPS - FEE_BPS) - 1) / (BPS - FEE_BPS);
+            refund = value - netIn - fee;
+        }
+        if (tokensOut == 0 || tokensOut < minOut) revert Slippage();
+
+        c.realBnb += netIn;
+        c.tokensSold += tokensOut;
+
+        IERC20(l.token).safeTransfer(buyer, tokensOut);
+        _payFee(id, FEE_KIND_BUY, buyer, fee);
+        if (refund > 0) _send(buyer, refund);
+
+        emit Trade(id, buyer, true, value - refund, tokensOut, _price(c));
+    }
+
+    function _validateParams(LaunchParams calldata p) internal pure {
+        uint256 n = bytes(p.name).length;
+        if (n == 0 || n > MAX_NAME_LEN) revert BadName();
+        n = bytes(p.symbol).length;
+        if (n == 0 || n > MAX_SYMBOL_LEN) revert BadSymbol();
+        if (
+            bytes(p.imageURI).length > MAX_IMAGE_LEN || bytes(p.description).length > MAX_DESCRIPTION_LEN
+                || bytes(p.website).length > MAX_SOCIAL_LEN || bytes(p.twitter).length > MAX_SOCIAL_LEN
+                || bytes(p.telegram).length > MAX_SOCIAL_LEN
+        ) revert MetadataTooLong();
+    }
+
+    /// @dev Pushes a protocol fee to the treasury immediately (reverts on failure).
+    function _payFee(uint256 id, uint8 kind, address payer, uint256 amount) internal {
+        if (amount == 0) return;
+        _send(treasury, amount);
+        emit FeePaid(id, kind, payer, amount);
+    }
 
     function _launch(uint256 id) internal view returns (Launch storage l) {
         l = _launches[id];

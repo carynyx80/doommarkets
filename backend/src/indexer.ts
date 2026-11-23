@@ -1,8 +1,8 @@
 import { createPublicClient, http, type AbiEvent, type PublicClient } from "viem";
 import { bsc, bscTestnet } from "viem/chains";
 import { config } from "./config";
-import { loadAbi, EVENT_NAMES } from "./abi";
-import { store, toNum, type Launch } from "./store";
+import { loadAbi, withFallbackEvents, EVENT_NAMES } from "./abi";
+import { store, toNum, sanitizeMeta, FEE_KINDS, type Launch } from "./store";
 
 const SURVIVE_SIDE = Number(process.env.SURVIVE_SIDE ?? 1);
 
@@ -68,7 +68,9 @@ function apply(log: any) {
         revealedSurvive: 0,
         revealedDoom: 0,
         settled: false,
+        ...(store.pendingMeta.get(id) ?? sanitizeMeta({})),
       };
+      store.pendingMeta.delete(id);
       store.launches.set(id, launch);
       break;
     }
@@ -107,6 +109,25 @@ function apply(log: any) {
       else l.revealedDoom += amt;
       break;
     }
+    case "LaunchMetadata": {
+      const m = sanitizeMeta({
+        image: pick(args, "imageURI", "image"),
+        description: pick(args, "description"),
+        website: pick(args, "website"),
+        twitter: pick(args, "twitter"),
+        telegram: pick(args, "telegram"),
+      });
+      if (l) Object.assign(l, m);
+      else store.pendingMeta.set(id, m);
+      break;
+    }
+    case "FeePaid": {
+      const kind = FEE_KINDS[Number(pick(args, "kind"))];
+      const amt = toNum(pick(args, "amount"));
+      if (kind) store.fees[kind] += amt;
+      store.feesTotal += amt;
+      break;
+    }
     case "Settled": {
       if (!l) return;
       l.settled = true;
@@ -119,7 +140,7 @@ function apply(log: any) {
 
 export async function startIndexer() {
   const { abi, source } = loadAbi();
-  const events = (abi as any[]).filter(
+  const events = (withFallbackEvents(abi) as any[]).filter(
     (x) => x.type === "event" && (EVENT_NAMES as readonly string[]).includes(x.name),
   ) as AbiEvent[];
   console.log(`[indexer] ABI from ${source}; indexing events: ${events.map((e) => e.name).join(", ")}`);

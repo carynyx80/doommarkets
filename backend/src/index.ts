@@ -5,14 +5,16 @@ import { config, demoMode } from "./config";
 import { store } from "./store";
 import { startIndexer } from "./indexer";
 import { seedDemo } from "./demo";
+import { registerUploads } from "./upload";
 
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL || "info" } });
 const started = Date.now();
 const meta = () => ({ demo: demoMode, chainId: config.chainId });
 
-app.register(cors, { origin: "*" });
+app.register(cors, { origin: "*", methods: ["GET", "HEAD", "POST", "OPTIONS"] });
+app.register(registerUploads);
 
-app.get("/", async () => ({ name: "doom-market-api", ...meta(), endpoints: ["/health", "/stats", "/tokens", "/tokens/:id", "/creators", "/creators/:address"] }));
+app.get("/", async () => ({ name: "doom-market-api", ...meta(), endpoints: ["/health", "/stats", "/tokens", "/tokens/:id", "/creators", "/creators/:address", "POST /upload", "/uploads/:file"] }));
 
 app.get("/health", async () => ({
   ok: true,

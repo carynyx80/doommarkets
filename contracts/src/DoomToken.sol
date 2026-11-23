@@ -9,9 +9,12 @@ contract DoomToken is ERC20 {
     uint256 public constant TOTAL_SUPPLY = 1_000_000_000 ether;
 
     address public immutable launchpad;
+    /// @notice Token image URI (set once at deployment, never changes).
+    string public imageURI;
 
-    constructor(string memory name_, string memory symbol_) ERC20(name_, symbol_) {
+    constructor(string memory name_, string memory symbol_, string memory imageURI_) ERC20(name_, symbol_) {
         launchpad = msg.sender;
+        imageURI = imageURI_;
         _mint(msg.sender, TOTAL_SUPPLY);
     }
 }

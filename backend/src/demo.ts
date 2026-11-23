@@ -1,5 +1,5 @@
 import { config } from "./config";
-import { store, type Launch } from "./store";
+import { store, sanitizeMeta, type Launch } from "./store";
 
 // Deterministic PRNG so demo data is stable across restarts (except timing).
 let seed = 0xd00d;
@@ -16,6 +16,26 @@ const TOKENS: [string, string][] = [
   ["BNB Cockroach", "ROACH"], ["Copium", "COPE"], ["Diamond Paws", "PAWS"], ["Zero Day", "ZDAY"],
   ["Ape Funeral", "RIP"], ["Phoenix Inu", "PHNX"],
 ];
+
+const BLURBS = [
+  "Will it survive 24h or join the graveyard? Bet sealed, find out at reveal.",
+  "Community-run degen experiment. No roadmap, just vibes and a bond on the line.",
+  "Creator bonded BNB that says this hits target. Prove them wrong.",
+  "Built for the bear. Holding through the doom.",
+];
+
+function demoMeta(name: string, symbol: string, i: number) {
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "");
+  return {
+    ...sanitizeMeta({
+      description: `${name} (${symbol}). ${BLURBS[i % BLURBS.length]}`,
+      website: i % 3 === 2 ? null : `https://${slug}.example`,
+      twitter: `@${slug.slice(0, 15)}`,
+      telegram: i % 2 ? `https://t.me/${slug}_bnb` : null,
+    }),
+    image: null,
+  };
+}
 
 export function seedDemo() {
   const now = Math.floor(Date.now() / 1000);
@@ -55,6 +75,7 @@ export function seedDemo() {
       revealedDoom: 0,
       settled,
       survived,
+      ...demoMeta(name, symbol, i),
     };
 
     // Random-walk price path, biased toward/away from target depending on outcome.
@@ -90,9 +111,14 @@ export function seedDemo() {
       }
     }
     l.committedTotal = +l.committedTotal.toFixed(4);
+    // Demo fees: 0.1% of launch bond, trade volume and bets.
+    store.fees.launch += l.bond * 0.001;
+    for (const t of l.trades) store.fees[t.isBuy ? "buy" : "sell"] += t.bnb * 0.001;
+    store.fees.bet += l.committedTotal * 0.001;
     if (settled) l.twapMcap = +(survived ? targetMcap * (1.05 + rand()) : targetMcap * rand() * 0.6).toFixed(3);
     store.launches.set(l.id, l);
   });
+  store.feesTotal = store.fees.launch + store.fees.buy + store.fees.sell + store.fees.bet;
   store.synced = true;
 
   // Keep the demo "alive": occasional trades/commits on commit-phase markets.
@@ -109,8 +135,13 @@ export function seedDemo() {
       ts: Math.floor(Date.now() / 1000), block: 0, tx: `0x${hex(64)}`,
     });
     l.volume += bnb;
+    store.fees[isBuy ? "buy" : "sell"] += bnb * 0.001;
+    store.feesTotal += bnb * 0.001;
     if (Math.random() < 0.3) {
-      l.committedTotal = +(l.committedTotal + 0.05 + Math.random()).toFixed(4);
+      const amt = 0.05 + Math.random();
+      store.fees.bet += amt * 0.001;
+      store.feesTotal += amt * 0.001;
+      l.committedTotal = +(l.committedTotal + amt).toFixed(4);
       l.commitCount++;
       l.bettors.add(traders[Math.floor(Math.random() * traders.length)]);
     }

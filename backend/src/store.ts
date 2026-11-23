@@ -13,7 +13,18 @@ export interface TradeRec {
   tx: string;
 }
 
-export interface Launch {
+export interface LaunchMeta {
+  image: string | null;
+  description: string | null;
+  website: string | null;
+  twitter: string | null;
+  telegram: string | null;
+}
+
+export const FEE_KINDS = ["launch", "buy", "sell", "bet"] as const;
+export type FeeKind = (typeof FEE_KINDS)[number];
+
+export interface Launch extends LaunchMeta {
   id: string;
   token: string;
   creator: string;
@@ -54,6 +65,10 @@ export class Store {
   headBlock = 0;
   synced = false;
   lastError: string | null = null;
+  /** LaunchMetadata seen before its LaunchCreated (shouldn't happen, but be order-tolerant). */
+  pendingMeta = new Map<string, LaunchMeta>();
+  fees: Record<FeeKind, number> = { launch: 0, buy: 0, sell: 0, bet: 0 };
+  feesTotal = 0;
 
   now(): number {
     return Math.floor(Date.now() / 1000);
@@ -88,6 +103,11 @@ export class Store {
       symbol: l.symbol,
       creator: creatorHandle(l.creator),
       creatorAddress: truncate(l.creator),
+      image: l.image ?? null,
+      description: l.description ?? null,
+      website: l.website ?? null,
+      twitter: l.twitter ?? null,
+      telegram: l.telegram ?? null,
       price: l.price,
       mcap: this.mcap(l),
       change: round(this.change24h(l), 2),
@@ -144,6 +164,13 @@ export class Store {
       totalBets: all.reduce((s, l) => s + l.commitCount, 0),
       totalVolume: round(all.reduce((s, l) => s + l.volume, 0), 4),
       survivalRate: settled.length ? round(survived / settled.length, 4) : 0,
+      feesBnb: round(this.feesTotal, 6),
+      feesByKind: {
+        launch: round(this.fees.launch, 6),
+        buy: round(this.fees.buy, 6),
+        sell: round(this.fees.sell, 6),
+        bet: round(this.fees.bet, 6),
+      },
     };
   }
 
@@ -204,6 +231,57 @@ function priceSeries(l: Launch) {
     out.push({ t, p: last, v: round(v, 6) });
   }
   return out;
+}
+
+// ---- metadata sanitization ----
+const clean = (v: unknown, max: number): string | null => {
+  if (typeof v !== "string") return null;
+  // strip control chars (keep \n), trim, cap length
+  const s = v.replace(/[\u0000-\u0009\u000b-\u001f\u007f]/g, "").trim();
+  return s ? s.slice(0, max) : null;
+};
+
+/** Only absolute http(s) URLs survive; javascript:, data:, etc. are dropped. */
+export function safeUrl(v: unknown): string | null {
+  const s = clean(v, 512);
+  if (!s) return null;
+  try {
+    const u = new URL(s);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+    if (u.username || u.password) return null;
+    return u.toString();
+  } catch {
+    return null;
+  }
+}
+
+/** Accept an http(s) URL, or a bare handle ("@name" / "name"), normalized to a URL on `base`. */
+function socialLink(v: unknown, base: string): string | null {
+  const s = clean(v, 256);
+  if (!s) return null;
+  if (/^https?:\/\//i.test(s)) return safeUrl(s);
+  const handle = s.replace(/^@/, "");
+  if (/^[A-Za-z0-9_]{1,32}$/.test(handle)) return `${base}${handle}`;
+  return null;
+}
+
+/** ipfs://CID/path is rewritten to a public gateway; otherwise must be http(s). */
+function safeImage(v: unknown): string | null {
+  const s = clean(v, 1024);
+  if (!s) return null;
+  const ipfs = /^ipfs:\/\/(?:ipfs\/)?([A-Za-z0-9]+(?:\/[A-Za-z0-9._\-\/]*)?)$/.exec(s);
+  if (ipfs) return `https://ipfs.io/ipfs/${ipfs[1]}`;
+  return safeUrl(s);
+}
+
+export function sanitizeMeta(m: Partial<Record<keyof LaunchMeta, unknown>>): LaunchMeta {
+  return {
+    image: safeImage(m.image),
+    description: clean(m.description, 1000),
+    website: safeUrl(m.website),
+    twitter: socialLink(m.twitter, "https://x.com/"),
+    telegram: socialLink(m.telegram, "https://t.me/"),
+  };
 }
 
 export const creatorHandle = (addr: string) => `creator-${addr.toLowerCase().slice(2, 6)}`;
