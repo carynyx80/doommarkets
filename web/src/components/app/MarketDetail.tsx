@@ -108,7 +108,7 @@ function CurveChart({ token }: { token: Token }) {
   const targetV = last * (token.targetMcap / token.marketCap);
   const ty = y(Math.min(max, Math.max(min, targetV)));
   const up = data[data.length - 1] >= data[0];
-  const color = up ? "#C6FF3D" : "#FF3B30";
+  const color = up ? "#FF2E4D" : "#FF8A1F";
   const idx = hover ?? data.length - 1;
   const shownMcap = token.marketCap * (data[idx] / last);
 
@@ -147,7 +147,7 @@ function CurveChart({ token }: { token: Token }) {
           {[0.25, 0.5, 0.75].map((g) => (
             <line key={g} x1="0" x2={W} y1={H * g} y2={H * g} stroke="rgba(255,255,255,0.05)" />
           ))}
-          <line x1="0" x2={W} y1={ty} y2={ty} stroke="#C6FF3D" strokeOpacity="0.5" strokeDasharray="6 6" vectorEffect="non-scaling-stroke" />
+          <line x1="0" x2={W} y1={ty} y2={ty} stroke="#FF2E4D" strokeOpacity="0.5" strokeDasharray="6 6" vectorEffect="non-scaling-stroke" />
           <path d={`${path} L${W},${H} L0,${H} Z`} fill="url(#fill)" />
           <path d={path} fill="none" stroke={color} strokeWidth="2" vectorEffect="non-scaling-stroke" />
           <line x1={x(idx)} x2={x(idx)} y1="0" y2={H} stroke="rgba(255,255,255,0.15)" vectorEffect="non-scaling-stroke" />

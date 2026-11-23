@@ -6,8 +6,8 @@ const config: Config = {
     extend: {
       colors: {
         ink: { DEFAULT: "#07070A", 900: "#0B0B10", 800: "#111118", 700: "#191922" },
-        acid: { DEFAULT: "#C6FF3D", dim: "#9BD12A" },
-        doom: { DEFAULT: "#FF3B30", dim: "#C92A21" },
+        acid: { DEFAULT: "#FF2E4D", dim: "#D41F3B" },
+        doom: { DEFAULT: "#FF8A1F", dim: "#D96A0B" },
       },
       fontFamily: {
         display: ["var(--font-display)", "system-ui", "sans-serif"],

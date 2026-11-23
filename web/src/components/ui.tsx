@@ -65,7 +65,7 @@ export function Sparkline({ data, up, className = "" }: { data: number[]; up: bo
   const pts = data.map((v, i) => `${(i / (data.length - 1)) * w},${h - ((v - min) / (max - min || 1)) * h}`).join(" ");
   return (
     <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className={className}>
-      <polyline points={pts} fill="none" stroke={up ? "#C6FF3D" : "#FF3B30"} strokeWidth="1.6" vectorEffect="non-scaling-stroke" />
+      <polyline points={pts} fill="none" stroke={up ? "#FF2E4D" : "#FF8A1F"} strokeWidth="1.6" vectorEffect="non-scaling-stroke" />
     </svg>
   );
 }

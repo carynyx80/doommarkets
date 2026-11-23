@@ -9,7 +9,7 @@ import { wagmiConfig } from "@/lib/wagmi";
 import { ToastProvider } from "./Toast";
 
 const theme = darkTheme({
-  accentColor: "#C6FF3D",
+  accentColor: "#FF2E4D",
   accentColorForeground: "#07070A",
   borderRadius: "large",
   overlayBlur: "small",

@@ -90,7 +90,7 @@ function Wallet() {
               <span className="text-white/30">switch</span>
             </button>
             <button onClick={openAccountModal} className="flex items-center gap-3 rounded-xl border border-acid/25 bg-acid/[0.07] px-3 py-2.5 text-left transition hover:border-acid/50">
-              <span className="h-8 w-8 shrink-0 rounded-full bg-gradient-to-br from-acid to-emerald-600" />
+              <span className="h-8 w-8 shrink-0 rounded-full bg-gradient-to-br from-acid to-rose-900" />
               <span className="min-w-0">
                 <span className="block truncate text-sm font-medium">{account.displayName}</span>
                 <span className="block truncate text-[11px] text-white/45">{account.displayBalance ?? "—"}</span>

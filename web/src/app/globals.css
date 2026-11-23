@@ -13,7 +13,7 @@ body {
 }
 
 ::selection {
-  background: #c6ff3d;
+  background: #FF2E4D;
   color: #07070a;
 }
 
@@ -26,7 +26,7 @@ body {
     @apply glass rounded-3xl transition-colors duration-300 hover:border-white/[0.16];
   }
   .btn-acid {
-    @apply inline-flex items-center justify-center gap-2 rounded-full bg-acid px-5 py-2.5 text-sm font-semibold text-ink transition-all duration-200 hover:shadow-[0_0_0_4px_rgba(198,255,61,0.18),0_10px_40px_-8px_rgba(198,255,61,0.6)] active:scale-[0.98];
+    @apply inline-flex items-center justify-center gap-2 rounded-full bg-acid px-5 py-2.5 text-sm font-semibold text-ink transition-all duration-200 hover:shadow-[0_0_0_4px_rgba(255,46,77,0.18),0_10px_40px_-8px_rgba(255,46,77,0.6)] active:scale-[0.98];
   }
   .btn-ghost {
     @apply inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-5 py-2.5 text-sm font-medium text-white transition-all duration-200 hover:border-white/25 hover:bg-white/[0.06];

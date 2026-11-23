@@ -27,7 +27,7 @@ export default async function Page() {
             {i === 0 && <div className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-acid/25 blur-3xl" />}
             <p className="font-mono text-xs text-white/40">#{i + 1}</p>
             <div className="mt-3 flex items-center gap-3">
-              <span className={`h-10 w-10 rounded-full ${i === 0 ? "bg-gradient-to-br from-acid to-emerald-700" : "bg-gradient-to-br from-white/40 to-white/5"}`} />
+              <span className={`h-10 w-10 rounded-full ${i === 0 ? "bg-gradient-to-br from-acid to-rose-950" : "bg-gradient-to-br from-white/40 to-white/5"}`} />
               <div>
                 <p className="font-semibold">{c.handle}</p>
                 <p className="text-xs text-white/45">
