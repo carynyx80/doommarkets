@@ -8,9 +8,12 @@ const sans = Inter({ subsets: ["latin"], variable: "--font-sans" });
 const mono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono", weight: ["400", "500"] });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://www.doomarket.xyz"),
   title: "Doom Market — Bet on which tokens survive",
   description:
     "Privacy-first memecoin launchpad on BNB Chain. Every launch ships with a sealed prediction market and a creator bond. Bet on which tokens survive — without anyone seeing your bet.",
+  openGraph: { siteName: "Doom Market", url: "https://www.doomarket.xyz", type: "website" },
+  twitter: { card: "summary_large_image" },
 };
 
 export const viewport: Viewport = { themeColor: "#07070A" };

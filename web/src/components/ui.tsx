@@ -9,12 +9,10 @@ import { usd } from "@/lib/format";
 export function Logo({ className = "" }: { className?: string }) {
   return (
     <Link href="/" className={`group flex items-center gap-2.5 ${className}`}>
-      <span className="relative grid h-8 w-8 place-items-center rounded-lg bg-acid text-ink">
-        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.4">
-          <path d="M5 19V5h6a7 7 0 0 1 0 14H5Z" />
-          <path d="M9 12h3" strokeLinecap="round" />
+      <span className="grid h-8 w-8 place-items-center rounded-lg bg-[#F4F4F2] transition-transform duration-300 group-hover:-rotate-6">
+        <svg viewBox="0 0 64 64" className="h-7 w-7" aria-hidden="true">
+          <path fill="#000" fillRule="evenodd" d="M16 12h14a20 20 0 0 1 0 40H16Z M29 22a3 3 0 0 0-3 3v14a3 3 0 0 0 6 0V25a3 3 0 0 0-3-3Z" />
         </svg>
-        <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border-2 border-ink bg-doom" />
       </span>
       <span className="font-display text-[15px] font-bold tracking-[-0.02em]">DOOM MARKET</span>
     </Link>
