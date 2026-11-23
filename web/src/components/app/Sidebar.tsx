@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
+import { X_HANDLE, X_URL } from "@/lib/site";
 import { Logo } from "@/components/ui";
 
 const I = ({ d }: { d: string }) => (
@@ -118,6 +119,10 @@ function SidebarInner({ onNavigate }: { onNavigate?: () => void }) {
         <p className="mt-1 text-[11px] leading-relaxed text-white/45">Positions are hidden until the market closes. Back up your salts.</p>
       </div>
       <div className="mt-auto border-t border-white/[0.06] p-3">
+        <a href={X_URL} target="_blank" rel="noreferrer" className="mb-2 flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm text-white/55 transition hover:bg-white/[0.04] hover:text-white">
+          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden="true"><path d="M17.75 3h3.07l-6.7 7.66L22 21h-6.17l-4.83-6.32L5.47 21H2.4l7.17-8.2L2 3h6.33l4.37 5.78L17.75 3Zm-1.08 16.2h1.7L7.4 4.73H5.58L16.67 19.2Z" /></svg>
+          <span>Follow @{X_HANDLE}</span>
+        </a>
         <Wallet />
       </div>
     </div>

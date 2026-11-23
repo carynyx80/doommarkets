@@ -1,4 +1,5 @@
 import PageHeader from "@/components/app/PageHeader";
+import { X_HANDLE, X_URL } from "@/lib/site";
 import { LAUNCHPAD_ADDRESS, MARKET_ADDRESS, TREASURY_ADDRESS } from "@/lib/contracts";
 
 export const metadata = { title: "Docs — Doom Market" };
@@ -89,6 +90,15 @@ export default function Page() {
               ))}
             </div>
             <p className="mt-3 text-[11px] text-white/35">Networks: BNB Smart Chain (56) and BSC Testnet (97).</p>
+          </section>
+          <section id="community" className="card scroll-mt-24 p-6">
+            <h2 className="h-display text-2xl">Community</h2>
+            <p className="mt-3 text-sm text-white/55">
+              Announcements, launches and support:{" "}
+              <a href={X_URL} target="_blank" rel="noreferrer" className="text-acid hover:underline">
+                @{X_HANDLE} on X
+              </a>
+            </p>
           </section>
         </div>
       </div>

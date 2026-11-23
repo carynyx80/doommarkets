@@ -13,7 +13,7 @@ export const metadata: Metadata = {
   description:
     "Privacy-first memecoin launchpad on BNB Chain. Every launch ships with a sealed prediction market and a creator bond. Bet on which tokens survive — without anyone seeing your bet.",
   openGraph: { siteName: "Doom Market", url: "https://www.doomarket.xyz", type: "website" },
-  twitter: { card: "summary_large_image" },
+  twitter: { card: "summary_large_image", site: "@doomarketxyz", creator: "@doomarketxyz" },
 };
 
 export const viewport: Viewport = { themeColor: "#07070A" };

@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { Logo, Marquee, Reveal } from "@/components/ui";
 import { TREASURY_ADDRESS } from "@/lib/contracts";
 import { bnb, num, short } from "@/lib/format";
+import { X_HANDLE, X_URL } from "@/lib/site";
 import type { Stats, Token } from "@/lib/types";
 
 const Arrow = () => (
@@ -36,9 +37,14 @@ function Nav() {
           <a href="#stats" className="transition hover:text-white">Stats</a>
           <a href="#faq" className="transition hover:text-white">FAQ</a>
         </div>
-        <Link href="/app" className="btn-acid !px-4 !py-2">
-          Open App <Arrow />
-        </Link>
+        <div className="flex items-center gap-2">
+          <a href={X_URL} target="_blank" rel="noreferrer" aria-label="Doom Market on X" className="grid h-9 w-9 place-items-center rounded-full border border-white/10 text-white/70 transition hover:border-white/25 hover:text-white">
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden="true"><path d="M17.75 3h3.07l-6.7 7.66L22 21h-6.17l-4.83-6.32L5.47 21H2.4l7.17-8.2L2 3h6.33l4.37 5.78L17.75 3Zm-1.08 16.2h1.7L7.4 4.73H5.58L16.67 19.2Z" /></svg>
+          </a>
+          <Link href="/app" className="btn-acid !px-4 !py-2">
+            Open App <Arrow />
+          </Link>
+        </div>
       </nav>
     </header>
   );
@@ -351,7 +357,7 @@ function Footer() {
             Treasury: <span title={TREASURY_ADDRESS}>{short(TREASURY_ADDRESS)}</span>
           </p>
         </div>
-        <div className="grid grid-cols-2 gap-10 text-sm sm:grid-cols-3">
+        <div className="grid grid-cols-2 gap-10 text-sm sm:grid-cols-4">
           <div className="space-y-3">
             <p className="text-white/35">Product</p>
             <Link href="/app" className="block text-white/70 hover:text-white">Explore</Link>
@@ -368,6 +374,12 @@ function Footer() {
             <p className="text-white/35">Network</p>
             <span className="block text-white/70">BNB Chain</span>
             <span className="block text-white/70">BSC Testnet</span>
+          </div>
+          <div className="space-y-3">
+            <p className="text-white/35">Community</p>
+            <a href={X_URL} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-white/70 hover:text-white">
+              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden="true"><path d="M17.75 3h3.07l-6.7 7.66L22 21h-6.17l-4.83-6.32L5.47 21H2.4l7.17-8.2L2 3h6.33l4.37 5.78L17.75 3Zm-1.08 16.2h1.7L7.4 4.73H5.58L16.67 19.2Z" /></svg> @{X_HANDLE}
+            </a>
           </div>
         </div>
       </div>
