@@ -10,7 +10,9 @@ import { useToast } from "@/components/Toast";
 import { UPLOAD_MAX_BYTES, UPLOAD_TYPES, uploadImage } from "@/lib/api";
 import {
   BNB_USD,
+  CREATOR_FEE_LABEL,
   FEE_LABEL,
+  creatorFeeOf,
   LAUNCHPAD_ADDRESS,
   TARGET_CHAIN,
   TREASURY_ADDRESS,
@@ -268,7 +270,7 @@ export default function Launch() {
     const vb = curveConsts?.[0]?.result;
     const vt = curveConsts?.[1]?.result;
     if (typeof vb !== "bigint" || typeof vt !== "bigint" || devBuyWei === BigInt(0)) return null;
-    const net = devBuyWei - devFee;
+    const net = devBuyWei - devFee - creatorFeeOf(devBuyWei);
     return vt - (vb * vt) / (vb + net);
   }, [curveConsts, devBuyWei, devFee]);
   const totalSupply = curveConsts?.[2]?.result;
@@ -571,6 +573,7 @@ export default function Launch() {
             <p className="mt-3 text-[11px] leading-relaxed text-white/40">
               Fees are taken from the amounts above (not added on top) and sent to the company wallet{" "}
               <span className="font-mono text-white/60">{short(TREASURY_ADDRESS)}</span>. Same {FEE_LABEL} applies to every buy, sell and bet.
+              <span className="mt-2 block text-acid/80">You earn a {CREATOR_FEE_LABEL} creator fee on every buy and sell of your token — withdraw it any time from Portfolio.</span>
             </p>
           </div>
         </motion.div>

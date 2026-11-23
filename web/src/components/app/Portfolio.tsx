@@ -9,6 +9,7 @@ import { TokenAvatar } from "@/components/ui";
 import { loadAllCommits, saveCommit, type StoredCommit } from "@/lib/commit";
 import { MARKET_ADDRESS, contractsReady, marketAbi } from "@/lib/contracts";
 import { mockTokens } from "@/lib/mock";
+import CreatorEarnings from "./CreatorEarnings";
 import PageHeader from "./PageHeader";
 
 export default function Portfolio() {
@@ -69,6 +70,8 @@ export default function Portfolio() {
           )
         }
       />
+
+      <CreatorEarnings />
 
       <div className="mb-6 rounded-2xl border border-amber-300/25 bg-amber-300/[0.06] p-4 text-xs text-amber-100/80">
         <span className="font-medium text-amber-200">⚠ Your salts are stored locally.</span> Clearing browser data deletes them. Without a salt you

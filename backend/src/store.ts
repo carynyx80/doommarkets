@@ -49,6 +49,8 @@ export interface Launch extends LaunchMeta {
   settled: boolean;
   survived?: boolean;
   twapMcap?: number;
+  /** Creator trading fees (0.1% of buys/sells) accrued on this token, BNB. */
+  creatorFees: number;
 }
 
 export const WEI = 1e18;
@@ -69,6 +71,20 @@ export class Store {
   pendingMeta = new Map<string, LaunchMeta>();
   fees: Record<FeeKind, number> = { launch: 0, buy: 0, sell: 0, bet: 0 };
   feesTotal = 0;
+  /** Sum of CreatorFeeAccrued across all tokens, BNB. */
+  creatorFeesTotal = 0;
+  /** CreatorFeesClaimed totals keyed by lowercase creator address, BNB. */
+  creatorFeesClaimed = new Map<string, number>();
+
+  addCreatorFee(l: Launch, amt: number) {
+    l.creatorFees += amt;
+    this.creatorFeesTotal += amt;
+  }
+
+  addCreatorClaim(creator: string, amt: number) {
+    const k = creator.toLowerCase();
+    this.creatorFeesClaimed.set(k, (this.creatorFeesClaimed.get(k) ?? 0) + amt);
+  }
 
   now(): number {
     return Math.floor(Date.now() / 1000);
@@ -129,6 +145,7 @@ export class Store {
       settled: l.settled,
       survived: l.survived ?? null,
       twapMcap: l.twapMcap ?? null,
+      creatorFeesBnb: round(l.creatorFees, 6),
     };
   }
 
@@ -165,6 +182,7 @@ export class Store {
       totalVolume: round(all.reduce((s, l) => s + l.volume, 0), 4),
       survivalRate: settled.length ? round(survived / settled.length, 4) : 0,
       feesBnb: round(this.feesTotal, 6),
+      creatorFeesBnb: round(this.creatorFeesTotal, 6),
       feesByKind: {
         launch: round(this.fees.launch, 6),
         buy: round(this.fees.buy, 6),
@@ -182,7 +200,7 @@ export class Store {
       map.get(k)!.push(l);
     }
     return [...map.entries()]
-      .map(([addr, ls]) => creatorRow(addr, ls))
+      .map(([addr, ls]) => creatorRow(addr, ls, this.creatorFeesClaimed.get(addr) ?? 0))
       .sort((a, b) => b.survived - a.survived || b.rate - a.rate || b.launched - a.launched);
   }
 
@@ -192,11 +210,12 @@ export class Store {
     const match = (c: string) => c.toLowerCase() === k || creatorHandle(c) === k;
     const ls = [...this.launches.values()].filter((l) => match(l.creator));
     if (!ls.length) return null;
-    return { ...creatorRow(ls[0].creator, ls), launches: ls.map((l) => this.summary(l)) };
+    const claimed = this.creatorFeesClaimed.get(ls[0].creator.toLowerCase()) ?? 0;
+    return { ...creatorRow(ls[0].creator, ls, claimed), launches: ls.map((l) => this.summary(l)) };
   }
 }
 
-function creatorRow(addr: string, ls: Launch[]) {
+function creatorRow(addr: string, ls: Launch[], claimed: number) {
   const settled = ls.filter((l) => l.settled);
   const survived = settled.filter((l) => l.survived).length;
   return {
@@ -208,6 +227,8 @@ function creatorRow(addr: string, ls: Launch[]) {
     doomed: settled.length - survived,
     rate: settled.length ? round(survived / settled.length, 4) : 0,
     bonded: round(ls.reduce((s, l) => s + l.bond, 0), 4),
+    creatorFeesEarned: round(ls.reduce((s, l) => s + l.creatorFees, 0), 6),
+    creatorFeesClaimed: round(claimed, 6),
   };
 }
 

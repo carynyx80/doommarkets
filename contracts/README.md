@@ -10,19 +10,28 @@ Foundry project for the Doom Market launchpad on BNB Chain.
 
 ## Fees
 
-Flat **0.1% (`FEE_BPS = 10`)** on everything, pushed to the treasury in the same transaction
+**Platform fee: 0.1% (`FEE_BPS = 10`)** on launch, buy, sell and bet, pushed to the treasury in the same transaction
 (`FeePaid(id, kind, payer, amount)`, kind 0=launch, 1=buy, 2=sell, 3=bet):
 
-- launch: 0.1% of the bond (stored bond is net); buy: 0.1% of BNB in; sell: 0.1% of BNB out;
+- launch: 0.1% of the bond (stored bond is net); buy: 0.1% of BNB in; sell: 0.1% of gross BNB out;
 - bet (`commit`): 0.1% of the bet; the recorded stake is the net amount.
 
+**Creator fee: 0.1% (`CREATOR_FEE_BPS = 10`)** on every buy (of BNB in) and sell (of gross BNB out), charged on top of the
+platform fee (so trades pay 0.2% total). It is **accrued, not pushed**: `creatorFeesOwed(creator)` grows on each trade
+(`CreatorFeeAccrued(id, creator, trader, amount)`), `totalCreatorFeesOwed` tracks the sum across creators, and the creator
+withdraws everything from all their launches with `claimCreatorFees()` (`CreatorFeesClaimed(creator, amount)`; reverts
+`NothingToClaim` when zero). A creator wallet that rejects BNB therefore can never block trading. On the buy that sells out
+the curve, the combined 0.2% is computed on the BNB actually used (rounded up) and split evenly between creator and treasury.
+`quoteBuy` / `quoteSell` already subtract both fees. No creator fee on launch bonds or bets.
+
 No fee at settlement. Unrevealed stakes and no-winner cases (plus a died bond in that case) are sent to the treasury at `settle`.
+Contract balance invariant: curve reserves + unclaimed bonds + market stakes + `totalCreatorFeesOwed`.
 
 ## Launching
 
 `createLaunch((name, symbol, imageURI, description, website, twitter, telegram, targetMcap, duration), devBuyWei, devBuyMinOut)`
 with `msg.value = bond + devBuyWei`. Gross bond must be >= `minBond`. If `devBuyWei > 0`, the creator buys in the same tx
-(0.1% fee, slippage-checked). Limits: name 1-32 bytes, symbol 1-10, imageURI <= 256, description <= 512, each social <= 128.
+(0.1% platform + 0.1% creator fee, slippage-checked). Limits: name 1-32 bytes, symbol 1-10, imageURI <= 256, description <= 512, each social <= 128.
 Emits `LaunchCreated` then `LaunchMetadata`; metadata is readable via `getMetadata(id)` and `DoomToken.imageURI()`.
 
 ## Market lifecycle

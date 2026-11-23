@@ -32,5 +32,9 @@ export const tokenUrl = (addr: string) => `${EXPLORER}/token/${addr}`;
 /** Flat 0.1% fee on launches (of bond), buys, sells and every bet — sent to TREASURY_ADDRESS. */
 export const FEE_BPS = 10;
 export const FEE_LABEL = "0.1%";
+/** Extra 0.1% of every buy and sell, accrued to the token's creator (claimCreatorFees). */
+export const CREATOR_FEE_BPS = 10;
+export const CREATOR_FEE_LABEL = "0.1%";
+export const creatorFeeOf = (wei: bigint) => (wei * BigInt(CREATOR_FEE_BPS)) / BigInt(10_000);
 export const feeOf = (wei: bigint) => (wei * BigInt(FEE_BPS)) / BigInt(10_000);
 export const feeOfNum = (n: number) => (n * FEE_BPS) / 10_000;

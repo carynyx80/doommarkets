@@ -75,6 +75,7 @@ export function seedDemo() {
       revealedDoom: 0,
       settled,
       survived,
+      creatorFees: 0,
       ...demoMeta(name, symbol, i),
     };
 
@@ -115,10 +116,18 @@ export function seedDemo() {
     store.fees.launch += l.bond * 0.001;
     for (const t of l.trades) store.fees[t.isBuy ? "buy" : "sell"] += t.bnb * 0.001;
     store.fees.bet += l.committedTotal * 0.001;
+    // Demo creator fees: 0.1% of every buy/sell, accrued to the token creator.
+    for (const t of l.trades) store.addCreatorFee(l, t.bnb * 0.001);
     if (settled) l.twapMcap = +(survived ? targetMcap * (1.05 + rand()) : targetMcap * rand() * 0.6).toFixed(3);
     store.launches.set(l.id, l);
   });
   store.feesTotal = store.fees.launch + store.fees.buy + store.fees.sell + store.fees.bet;
+  // Some demo creators have already withdrawn part of what they earned.
+  creators.forEach((c, i) => {
+    if (i % 2) return;
+    const earned = store.list().filter((l) => l.creator === c).reduce((s, l) => s + l.creatorFees, 0);
+    if (earned > 0) store.addCreatorClaim(c, +(earned * (0.3 + 0.1 * i)).toFixed(6));
+  });
   store.synced = true;
 
   // Keep the demo "alive": occasional trades/commits on commit-phase markets.
@@ -137,6 +146,7 @@ export function seedDemo() {
     l.volume += bnb;
     store.fees[isBuy ? "buy" : "sell"] += bnb * 0.001;
     store.feesTotal += bnb * 0.001;
+    store.addCreatorFee(l, bnb * 0.001);
     if (Math.random() < 0.3) {
       const amt = 0.05 + Math.random();
       store.fees.bet += amt * 0.001;

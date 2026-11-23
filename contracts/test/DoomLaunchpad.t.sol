@@ -42,6 +42,8 @@ contract DoomLaunchpadTest is Test {
     );
     event FeePaid(uint256 indexed id, uint8 indexed kind, address indexed payer, uint256 amount);
     event Trade(uint256 indexed id, address indexed trader, bool isBuy, uint256 bnb, uint256 tokens, uint256 priceAfter);
+    event CreatorFeeAccrued(uint256 indexed id, address indexed creator, address indexed trader, uint256 amount);
+    event CreatorFeesClaimed(address indexed creator, uint256 amount);
 
     uint256 constant BOND = 0.1 ether;
     uint256 constant BOND_FEE = 0.0001 ether;
@@ -154,7 +156,8 @@ contract DoomLaunchpadTest is Test {
         assertEq(DoomToken(l.token).balanceOf(creator), quote);
         assertEq(c0 - creator.balance, BOND + devBuy);
         assertEq(TREASURY.balance, BOND_FEE + _fee(devBuy));
-        assertEq(lp.getCurve(id).realBnb, devBuy - _fee(devBuy));
+        assertEq(lp.getCurve(id).realBnb, devBuy - 2 * _fee(devBuy));
+        assertEq(lp.creatorFeesOwed(creator), _fee(devBuy));
         assertEq(address(lp).balance, NET_BOND + devBuy - _fee(devBuy));
     }
 
@@ -286,8 +289,9 @@ contract DoomLaunchpadTest is Test {
         DoomToken t = DoomToken(lp.getLaunch(id).token);
         assertEq(t.balanceOf(alice), out);
         assertEq(TREASURY.balance - tr0, 0.001 ether);
-        assertEq(lp.getCurve(id).realBnb, 0.999 ether);
-        assertEq(address(lp).balance, NET_BOND + 0.999 ether);
+        assertEq(lp.getCurve(id).realBnb, 0.998 ether);
+        assertEq(lp.creatorFeesOwed(creator), 0.001 ether);
+        assertEq(address(lp).balance, NET_BOND + 0.998 ether + 0.001 ether);
         assertGt(lp.currentPrice(id), p0);
 
         vm.startPrank(alice);
@@ -303,8 +307,9 @@ contract DoomLaunchpadTest is Test {
         vm.stopPrank();
         assertEq(bnbOut, q);
         assertEq(TREASURY.balance - tr1, _fee(gross));
-        assertEq(bnbOut, gross - _fee(gross));
-        assertEq(address(lp).balance, NET_BOND + lp.getCurve(id).realBnb);
+        assertEq(bnbOut, gross - 2 * _fee(gross));
+        assertEq(lp.creatorFeesOwed(creator), 0.001 ether + _fee(gross));
+        assertEq(address(lp).balance, NET_BOND + lp.getCurve(id).realBnb + lp.totalCreatorFeesOwed());
         assertEq(alice.balance - balBefore, bnbOut);
         assertLt(bnbOut, 1 ether);
         assertEq(lp.getCurve(id).tokensSold, 0);
@@ -328,9 +333,14 @@ contract DoomLaunchpadTest is Test {
         assertLt(spent, 500 ether);
         // reserve stays in the contract; fee went to treasury; refund went back
         uint256 reserve = lp.getCurve(id).realBnb;
-        assertEq(address(lp).balance, reserve + NET_BOND);
-        assertEq(TREASURY.balance, BOND_FEE + (spent - reserve));
-        assertApproxEqAbs(spent - reserve, _fee(spent), 1);
+        uint256 cfee = lp.creatorFeesOwed(creator);
+        assertEq(cfee, lp.totalCreatorFeesOwed());
+        assertEq(address(lp).balance, reserve + NET_BOND + cfee);
+        assertEq(TREASURY.balance, BOND_FEE + (spent - reserve - cfee));
+        // combined 0.2% fee (rounded up) split evenly between creator and treasury
+        assertApproxEqAbs(spent - reserve, 2 * _fee(spent), 2);
+        assertApproxEqAbs(cfee, _fee(spent), 1);
+        assertGe(TREASURY.balance - BOND_FEE, cfee);
         vm.prank(bob);
         vm.expectRevert(DoomLaunchpad.CurveSoldOut.selector);
         lp.buy{value: 1 ether}(id, 0);
@@ -442,7 +452,8 @@ contract DoomLaunchpadTest is Test {
         vm.prank(creator);
         lp.claimBond(id);
         assertEq(creator.balance - c0, NET_BOND);
-        assertEq(address(lp).balance, lp.getCurve(id).realBnb); // only curve reserve remains
+        // only curve reserve + unclaimed creator fees remain
+        assertEq(address(lp).balance, lp.getCurve(id).realBnb + lp.totalCreatorFeesOwed());
         vm.prank(creator);
         vm.expectRevert(DoomLaunchpad.NothingToClaim.selector);
         lp.claimBond(id);
@@ -533,7 +544,14 @@ contract DoomLaunchpadTest is Test {
         t.approve(address(lp), outB);
         lp.sell(id, outB, 0);
         vm.stopPrank();
+        assertEq(address(lp).balance, lp.getCurve(id).realBnb + NET_BOND + lp.totalCreatorFeesOwed());
+        // creator can always withdraw; afterwards balance == reserve + bond
+        if (lp.creatorFeesOwed(creator) > 0) {
+            vm.prank(creator);
+            lp.claimCreatorFees();
+        }
         assertEq(address(lp).balance, lp.getCurve(id).realBnb + NET_BOND);
+        assertEq(lp.totalCreatorFeesOwed(), 0);
     }
 
     function test_betFee_minBetIsGross() public {
@@ -547,11 +565,152 @@ contract DoomLaunchpadTest is Test {
         assertEq(lp.getMarket(id).totalCommitted, 0.000999 ether);
     }
 
+    // ------------------------------------------------------------------ creator fees
+
+    function test_creatorFee_constants() public view {
+        assertEq(lp.CREATOR_FEE_BPS(), 10);
+    }
+
+    function test_creatorFee_accruesOnBuyAndSell_exact() public {
+        uint256 id = _launch(100 ether);
+        uint256 tr0 = TREASURY.balance;
+
+        vm.expectEmit(true, true, true, true, address(lp));
+        emit FeePaid(id, 1, alice, 0.002 ether);
+        vm.expectEmit(true, true, true, true, address(lp));
+        emit CreatorFeeAccrued(id, creator, alice, 0.002 ether);
+        vm.prank(alice);
+        uint256 out = lp.buy{value: 2 ether}(id, 0);
+        assertEq(lp.creatorFeesOwed(creator), 0.002 ether);
+        assertEq(lp.totalCreatorFeesOwed(), 0.002 ether);
+        assertEq(TREASURY.balance - tr0, 0.002 ether); // treasury exactly 0.1%
+        assertEq(lp.getCurve(id).realBnb, 1.996 ether);
+        // creator is not paid out yet (accrual)
+        assertEq(creator.balance, 100 ether - BOND);
+
+        DoomLaunchpad.Curve memory cv = lp.getCurve(id);
+        uint256 amt = out / 2;
+        uint256 gross = ((30 ether + cv.realBnb) * amt) / (1_073_000_000 ether - cv.tokensSold + amt);
+        uint256 tr1 = TREASURY.balance;
+        uint256 a0 = alice.balance;
+        vm.startPrank(alice);
+        DoomToken(lp.getLaunch(id).token).approve(address(lp), amt);
+        vm.expectEmit(true, true, true, true, address(lp));
+        emit FeePaid(id, 2, alice, _fee(gross));
+        vm.expectEmit(true, true, true, true, address(lp));
+        emit CreatorFeeAccrued(id, creator, alice, _fee(gross));
+        uint256 bnbOut = lp.sell(id, amt, 0);
+        vm.stopPrank();
+        assertEq(bnbOut, gross - 2 * _fee(gross));
+        assertEq(alice.balance - a0, bnbOut);
+        assertEq(TREASURY.balance - tr1, _fee(gross)); // treasury exactly 0.1%
+        assertEq(lp.creatorFeesOwed(creator), 0.002 ether + _fee(gross));
+        assertEq(lp.totalCreatorFeesOwed(), 0.002 ether + _fee(gross));
+        assertEq(address(lp).balance, NET_BOND + lp.getCurve(id).realBnb + lp.totalCreatorFeesOwed());
+    }
+
+    function test_creatorFee_quotesSubtractBothFees() public {
+        uint256 id = _launch(100 ether);
+        uint256 netIn = 1 ether - 2 * _fee(1 ether);
+        uint256 expected = (1_073_000_000 ether * netIn) / (30 ether + netIn);
+        assertEq(lp.quoteBuy(id, 1 ether), expected);
+        vm.prank(alice);
+        uint256 out = lp.buy{value: 1 ether}(id, 0);
+        assertEq(out, expected);
+        DoomLaunchpad.Curve memory cv = lp.getCurve(id);
+        uint256 gross = ((30 ether + cv.realBnb) * out) / (1_073_000_000 ether - cv.tokensSold + out);
+        assertEq(lp.quoteSell(id, out), gross - 2 * _fee(gross));
+    }
+
+    function test_claimCreatorFees_paysAndZeroes() public {
+        uint256 id = _launch(100 ether);
+        vm.prank(alice);
+        lp.buy{value: 3 ether}(id, 0);
+        // second launch by the same creator accrues to the same balance
+        uint256 id2 = _launch(100 ether);
+        vm.prank(bob);
+        lp.buy{value: 1 ether}(id2, 0);
+        uint256 owed = lp.creatorFeesOwed(creator);
+        assertEq(owed, 0.004 ether);
+
+        uint256 c0 = creator.balance;
+        uint256 lp0 = address(lp).balance;
+        vm.expectEmit(true, false, false, true, address(lp));
+        emit CreatorFeesClaimed(creator, owed);
+        vm.prank(creator);
+        uint256 got = lp.claimCreatorFees();
+        assertEq(got, owed);
+        assertEq(creator.balance - c0, owed);
+        assertEq(lp0 - address(lp).balance, owed);
+        assertEq(lp.creatorFeesOwed(creator), 0);
+        assertEq(lp.totalCreatorFeesOwed(), 0);
+        assertEq(address(lp).balance, 2 * NET_BOND + lp.getCurve(id).realBnb + lp.getCurve(id2).realBnb);
+
+        vm.prank(creator);
+        vm.expectRevert(DoomLaunchpad.NothingToClaim.selector);
+        lp.claimCreatorFees();
+    }
+
+    function test_claimCreatorFees_nothingReverts() public {
+        vm.prank(alice);
+        vm.expectRevert(DoomLaunchpad.NothingToClaim.selector);
+        lp.claimCreatorFees();
+        _launch(100 ether);
+        vm.prank(creator);
+        vm.expectRevert(DoomLaunchpad.NothingToClaim.selector);
+        lp.claimCreatorFees();
+    }
+
+    function test_creatorRejectingBnb_doesNotBlockTrading() public {
+        RejectingCreator rc = new RejectingCreator(lp);
+        vm.deal(address(rc), 1 ether);
+        uint256 id = rc.launch(_params(100 ether), BOND);
+        assertEq(lp.getLaunch(id).creator, address(rc));
+
+        uint256 tr0 = TREASURY.balance;
+        vm.prank(alice);
+        uint256 out = lp.buy{value: 1 ether}(id, 0);
+        assertEq(TREASURY.balance - tr0, 0.001 ether);
+        vm.startPrank(alice);
+        DoomToken(lp.getLaunch(id).token).approve(address(lp), out);
+        lp.sell(id, out, 0);
+        vm.stopPrank();
+        assertGt(lp.creatorFeesOwed(address(rc)), 0.001 ether);
+
+        // claiming fails for the rejecting contract, but its balance is preserved
+        uint256 owed = lp.creatorFeesOwed(address(rc));
+        vm.expectRevert(DoomLaunchpad.TransferFailed.selector);
+        rc.claim();
+        assertEq(lp.creatorFeesOwed(address(rc)), owed);
+        assertEq(address(lp).balance, NET_BOND + lp.getCurve(id).realBnb + owed);
+    }
+
     function test_tinyTrade_zeroFeeNoEvent() public {
         uint256 id = _launch(100 ether);
         uint256 tr0 = TREASURY.balance;
         vm.prank(alice);
         lp.buy{value: 999}(id, 0); // fee rounds to 0
         assertEq(TREASURY.balance, tr0);
+        assertEq(lp.totalCreatorFeesOwed(), 0);
+    }
+}
+
+contract RejectingCreator {
+    DoomLaunchpad immutable lp;
+
+    constructor(DoomLaunchpad lp_) {
+        lp = lp_;
+    }
+
+    function launch(DoomLaunchpad.LaunchParams memory p, uint256 bond) external returns (uint256) {
+        return lp.createLaunch{value: bond}(p, 0, 0);
+    }
+
+    function claim() external returns (uint256) {
+        return lp.claimCreatorFees();
+    }
+
+    receive() external payable {
+        revert("no bnb");
     }
 }

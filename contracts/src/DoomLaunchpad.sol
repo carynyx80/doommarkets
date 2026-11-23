@@ -25,6 +25,8 @@ contract DoomLaunchpad is Ownable2Step, Pausable, ReentrancyGuard {
 
     uint256 public constant BPS = 10_000;
     uint256 public constant FEE_BPS = 10; // 0.1% on launch bond, buy, sell and bet
+    uint256 public constant CREATOR_FEE_BPS = 10; // 0.1% of every buy and sell, accrued to the token creator
+    uint256 internal constant TRADE_FEE_BPS_TOTAL = FEE_BPS + CREATOR_FEE_BPS;
 
     uint8 public constant FEE_KIND_LAUNCH = 0;
     uint8 public constant FEE_KIND_BUY = 1;
@@ -147,6 +149,9 @@ contract DoomLaunchpad is Ownable2Step, Pausable, ReentrancyGuard {
 
     mapping(address => uint256) public launchedCount;
     mapping(address => uint256) public survivedCount;
+    /// @notice Creator trading fees waiting to be withdrawn with claimCreatorFees().
+    mapping(address => uint256) public creatorFeesOwed;
+    uint256 public totalCreatorFeesOwed;
 
     // ---------------------------------------------------------------------
     // Events (signatures are stable; frontend/backend depend on them)
@@ -187,6 +192,8 @@ contract DoomLaunchpad is Ownable2Step, Pausable, ReentrancyGuard {
     event Claimed(uint256 indexed id, address indexed user, uint256 amount);
     event BondClaimed(uint256 indexed id, address indexed creator, uint256 amount);
     event MinBondUpdated(uint256 oldMinBond, uint256 newMinBond);
+    event CreatorFeeAccrued(uint256 indexed id, address indexed creator, address indexed trader, uint256 amount);
+    event CreatorFeesClaimed(address indexed creator, uint256 amount);
 
     // ---------------------------------------------------------------------
     // Errors
@@ -336,7 +343,8 @@ contract DoomLaunchpad is Ownable2Step, Pausable, ReentrancyGuard {
         uint256 gross = (vBnb * amount) / (vTok + amount);
         if (gross > c.realBnb) revert InsufficientReserve();
         uint256 fee = (gross * FEE_BPS) / BPS;
-        bnbOut = gross - fee;
+        uint256 creatorFee = (gross * CREATOR_FEE_BPS) / BPS;
+        bnbOut = gross - fee - creatorFee;
         if (bnbOut == 0 || bnbOut < minOut) revert Slippage();
 
         c.realBnb -= gross;
@@ -344,6 +352,7 @@ contract DoomLaunchpad is Ownable2Step, Pausable, ReentrancyGuard {
 
         IERC20(l.token).safeTransferFrom(msg.sender, address(this), amount);
         _payFee(id, FEE_KIND_SELL, msg.sender, fee);
+        _accrueCreatorFee(id, l.creator, msg.sender, creatorFee);
         _send(msg.sender, bnbOut);
 
         emit Trade(id, msg.sender, false, bnbOut, amount, _price(c));
@@ -457,6 +466,16 @@ contract DoomLaunchpad is Ownable2Step, Pausable, ReentrancyGuard {
         emit Claimed(id, msg.sender, amount);
     }
 
+    /// @notice Withdraw all creator trading fees earned across every token you launched.
+    function claimCreatorFees() external nonReentrant returns (uint256 amount) {
+        amount = creatorFeesOwed[msg.sender];
+        if (amount == 0) revert NothingToClaim();
+        creatorFeesOwed[msg.sender] = 0;
+        totalCreatorFeesOwed -= amount;
+        _send(msg.sender, amount);
+        emit CreatorFeesClaimed(msg.sender, amount);
+    }
+
     function claimBond(uint256 id) external nonReentrant {
         Launch storage l = _launch(id);
         if (l.state != LaunchState.Survived) revert NotSettled();
@@ -528,7 +547,7 @@ contract DoomLaunchpad is Ownable2Step, Pausable, ReentrancyGuard {
 
     function quoteBuy(uint256 id, uint256 bnbIn) external view returns (uint256 tokensOut) {
         Curve storage c = _curves[id];
-        uint256 netIn = bnbIn - (bnbIn * FEE_BPS) / BPS;
+        uint256 netIn = bnbIn - (bnbIn * FEE_BPS) / BPS - (bnbIn * CREATOR_FEE_BPS) / BPS;
         uint256 vBnb = VIRTUAL_BNB + c.realBnb;
         uint256 vTok = VIRTUAL_TOKENS - c.tokensSold;
         tokensOut = (vTok * netIn) / (vBnb + netIn);
@@ -542,7 +561,7 @@ contract DoomLaunchpad is Ownable2Step, Pausable, ReentrancyGuard {
         uint256 vTok = VIRTUAL_TOKENS - c.tokensSold;
         uint256 gross = (vBnb * amount) / (vTok + amount);
         if (gross > c.realBnb) return 0;
-        bnbOut = gross - (gross * FEE_BPS) / BPS;
+        bnbOut = gross - (gross * FEE_BPS) / BPS - (gross * CREATOR_FEE_BPS) / BPS;
     }
 
     // ---------------------------------------------------------------------
@@ -562,7 +581,8 @@ contract DoomLaunchpad is Ownable2Step, Pausable, ReentrancyGuard {
         uint256 vTok = VIRTUAL_TOKENS - c.tokensSold;
 
         uint256 fee = (value * FEE_BPS) / BPS;
-        uint256 netIn = value - fee;
+        uint256 creatorFee = (value * CREATOR_FEE_BPS) / BPS;
+        uint256 netIn = value - fee - creatorFee;
         tokensOut = (vTok * netIn) / (vBnb + netIn);
         uint256 refund;
 
@@ -570,8 +590,11 @@ contract DoomLaunchpad is Ownable2Step, Pausable, ReentrancyGuard {
             tokensOut = remaining;
             // BNB needed (rounded up) to take exactly `remaining` tokens
             netIn = (vBnb * remaining + (vTok - remaining) - 1) / (vTok - remaining);
-            fee = (netIn * FEE_BPS + (BPS - FEE_BPS) - 1) / (BPS - FEE_BPS);
-            refund = value - netIn - fee;
+            uint256 totalFee =
+                (netIn * TRADE_FEE_BPS_TOTAL + (BPS - TRADE_FEE_BPS_TOTAL) - 1) / (BPS - TRADE_FEE_BPS_TOTAL);
+            creatorFee = (totalFee * CREATOR_FEE_BPS) / TRADE_FEE_BPS_TOTAL;
+            fee = totalFee - creatorFee;
+            refund = value - netIn - totalFee;
         }
         if (tokensOut == 0 || tokensOut < minOut) revert Slippage();
 
@@ -580,6 +603,7 @@ contract DoomLaunchpad is Ownable2Step, Pausable, ReentrancyGuard {
 
         IERC20(l.token).safeTransfer(buyer, tokensOut);
         _payFee(id, FEE_KIND_BUY, buyer, fee);
+        _accrueCreatorFee(id, l.creator, buyer, creatorFee);
         if (refund > 0) _send(buyer, refund);
 
         emit Trade(id, buyer, true, value - refund, tokensOut, _price(c));
@@ -595,6 +619,15 @@ contract DoomLaunchpad is Ownable2Step, Pausable, ReentrancyGuard {
                 || bytes(p.website).length > MAX_SOCIAL_LEN || bytes(p.twitter).length > MAX_SOCIAL_LEN
                 || bytes(p.telegram).length > MAX_SOCIAL_LEN
         ) revert MetadataTooLong();
+    }
+
+    /// @dev Records a creator trading fee; the creator withdraws it with claimCreatorFees().
+    ///      Accrual (not push) so a creator wallet that rejects BNB can never block trading.
+    function _accrueCreatorFee(uint256 id, address creator, address trader, uint256 amount) internal {
+        if (amount == 0) return;
+        creatorFeesOwed[creator] += amount;
+        totalCreatorFeesOwed += amount;
+        emit CreatorFeeAccrued(id, creator, trader, amount);
     }
 
     /// @dev Pushes a protocol fee to the treasury immediately (reverts on failure).

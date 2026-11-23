@@ -10,6 +10,8 @@ const fallback = parseAbi([
   "event Settled(uint256 indexed id, bool survived, uint256 twapMcap)",
   "event LaunchMetadata(uint256 indexed id, string imageURI, string description, string website, string twitter, string telegram)",
   "event FeePaid(uint256 indexed id, uint8 indexed kind, address indexed payer, uint256 amount)",
+  "event CreatorFeeAccrued(uint256 indexed id, address indexed creator, address indexed trader, uint256 amount)",
+  "event CreatorFeesClaimed(address indexed creator, uint256 amount)",
 ]);
 
 /** Loads src/abi/DoomLaunchpad.json (raw ABI array or {abi:[...]} artifact) if present, else the fallback. */
@@ -32,7 +34,7 @@ export function loadAbi(): { abi: Abi; source: string } {
   return { abi: fallback as Abi, source: "fallback(parseAbi)" };
 }
 
-export const EVENT_NAMES = ["LaunchCreated", "Trade", "Committed", "Revealed", "Settled", "LaunchMetadata", "FeePaid"] as const;
+export const EVENT_NAMES = ["LaunchCreated", "Trade", "Committed", "Revealed", "Settled", "LaunchMetadata", "FeePaid", "CreatorFeeAccrued", "CreatorFeesClaimed"] as const;
 
 /** Events from the fallback list that the loaded ABI lacks (e.g. JSON not yet regenerated) are merged in. */
 export function withFallbackEvents(abi: Abi): Abi {

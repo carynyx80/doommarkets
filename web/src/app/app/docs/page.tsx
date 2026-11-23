@@ -33,7 +33,7 @@ const sections: [string, string[]][] = [
   [
     "Fees",
     [
-      "0.1% flat fee on launches, trades and bets. That's 0.1% of the creator bond at launch, 0.1% of every bonding-curve buy and sell (including the optional dev buy), and 0.1% of every sealed bet.",
+      "0.1% flat fee on launches, trades and bets. That's 0.1% of the creator bond at launch, 0.1% of every bonding-curve buy and sell (including the optional dev buy), and 0.1% of every sealed bet. On top of that, token creators earn a 0.1% creator fee on every buy and sell of their token, which they withdraw any time from Portfolio.",
       `All fees are sent to the company wallet ${TREASURY_ADDRESS}. Each fee is shown in the launch summary, trade panel and bet panel before you sign.`,
     ],
   ],

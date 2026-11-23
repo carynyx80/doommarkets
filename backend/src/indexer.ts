@@ -68,6 +68,7 @@ function apply(log: any) {
         revealedSurvive: 0,
         revealedDoom: 0,
         settled: false,
+        creatorFees: 0,
         ...(store.pendingMeta.get(id) ?? sanitizeMeta({})),
       };
       store.pendingMeta.delete(id);
@@ -126,6 +127,16 @@ function apply(log: any) {
       const amt = toNum(pick(args, "amount"));
       if (kind) store.fees[kind] += amt;
       store.feesTotal += amt;
+      break;
+    }
+    case "CreatorFeeAccrued": {
+      if (!l) return;
+      store.addCreatorFee(l, toNum(pick(args, "amount")));
+      break;
+    }
+    case "CreatorFeesClaimed": {
+      const who = pick(args, "creator");
+      if (who) store.addCreatorClaim(String(who), toNum(pick(args, "amount")));
       break;
     }
     case "Settled": {

@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { erc20Abi, formatEther, parseEther, type Address, type Hex } from "viem";
 import { useAccount, useBalance, usePublicClient, useReadContract, useSwitchChain, useWriteContract } from "wagmi";
 import { useToast } from "@/components/Toast";
-import { FEE_LABEL, LAUNCHPAD_ADDRESS, TARGET_CHAIN, contractsReady, feeOf, launchpadAbi, txUrl } from "@/lib/contracts";
+import { CREATOR_FEE_LABEL, FEE_LABEL, LAUNCHPAD_ADDRESS, creatorFeeOf, TARGET_CHAIN, contractsReady, feeOf, launchpadAbi, txUrl } from "@/lib/contracts";
 import { short } from "@/lib/format";
 import type { Token } from "@/lib/types";
 
@@ -101,8 +101,9 @@ export default function TradePanel({ token }: { token: Token }) {
   const quoteOut = typeof quote.data === "bigint" && debounced === amountWei ? quote.data : undefined;
   const slipBps = BigInt(Math.round(Math.min(50, Math.max(0, Number(slippage) || 0)) * 100));
   const minOut = quoteOut !== undefined ? (quoteOut * (BigInt(10_000) - slipBps)) / BigInt(10_000) : ZERO;
-  // fee: 0.1% of BNB in (buy) or of BNB out (sell)
+  // fees: 0.1% platform + 0.1% creator, of BNB in (buy) or of BNB out (sell)
   const feeWei = mode === "buy" ? feeOf(amountWei) : quoteOut !== undefined ? feeOf(quoteOut) : undefined;
+  const creatorFeeWei = mode === "buy" ? creatorFeeOf(amountWei) : quoteOut !== undefined ? creatorFeeOf(quoteOut) : undefined;
 
   const tokenBalance = typeof tokBal.data === "bigint" ? tokBal.data : undefined;
   const bnbBalance = bnbBal.data?.value;
@@ -284,8 +285,12 @@ export default function TradePanel({ token }: { token: Token }) {
           <span className="font-mono text-white/60">{quoteOut === undefined ? "—" : `${fmt(minOut, mode === "buy" ? 2 : 6)} ${mode === "buy" ? token.symbol : "BNB"}`}</span>
         </div>
         <div className="flex justify-between">
-          <span className="text-white/50">Fee ({FEE_LABEL})</span>
+          <span className="text-white/50">Platform fee ({FEE_LABEL})</span>
           <span className="font-mono text-white/60">{feeWei === undefined ? "—" : `${fmt(feeWei, 6)} BNB`}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-white/50">Creator fee ({CREATOR_FEE_LABEL})</span>
+          <span className="font-mono text-white/60">{creatorFeeWei === undefined ? "—" : `${fmt(creatorFeeWei, 6)} BNB`}</span>
         </div>
       </div>
 
@@ -298,7 +303,7 @@ export default function TradePanel({ token }: { token: Token }) {
         {!open ? "Trading closed" : label}
       </button>
       <p className="mt-3 text-center text-[11px] text-white/35">
-        {FEE_LABEL} flat fee on every buy and sell · {ready ? "bonding-curve pricing" : "contracts deploying soon"}
+        {FEE_LABEL} platform + {CREATOR_FEE_LABEL} creator fee on every buy and sell · {ready ? "bonding-curve pricing" : "contracts deploying soon"}
       </p>
     </div>
   );
