@@ -1,0 +1,213 @@
+import { config } from "./config";
+
+export type Phase = "commit" | "reveal" | "settled";
+
+export interface TradeRec {
+  trader: string;
+  isBuy: boolean;
+  bnb: number; // BNB
+  tokens: number; // whole tokens
+  price: number; // BNB per token
+  ts: number; // unix seconds
+  block: number;
+  tx: string;
+}
+
+export interface Launch {
+  id: string;
+  token: string;
+  creator: string;
+  name: string;
+  symbol: string;
+  bond: number; // BNB
+  targetMcap: number; // BNB
+  deadline: number; // unix seconds
+  createdAt: number;
+  createdBlock: number;
+  createdTx: string;
+  trades: TradeRec[];
+  volume: number;
+  price: number;
+  // Sealed market aggregates (never per-user sides before reveal)
+  committedTotal: number;
+  commitCount: number;
+  bettors: Set<string>;
+  revealedCount: number;
+  revealedSurvive: number;
+  revealedDoom: number;
+  settled: boolean;
+  survived?: boolean;
+  twapMcap?: number;
+}
+
+export const WEI = 1e18;
+export const toNum = (v: unknown): number => {
+  if (typeof v === "bigint") return Number(v) / WEI;
+  if (typeof v === "number") return v;
+  if (typeof v === "string" && v) return Number(v) / WEI;
+  return 0;
+};
+
+export class Store {
+  launches = new Map<string, Launch>();
+  lastBlock = 0;
+  headBlock = 0;
+  synced = false;
+  lastError: string | null = null;
+
+  now(): number {
+    return Math.floor(Date.now() / 1000);
+  }
+
+  phase(l: Launch): Phase {
+    if (l.settled) return "settled";
+    return this.now() < l.deadline ? "commit" : "reveal";
+  }
+
+  mcap(l: Launch): number {
+    return l.price * config.totalSupply;
+  }
+
+  change24h(l: Launch): number {
+    if (!l.trades.length) return 0;
+    const cutoff = this.now() - 86400;
+    let ref = l.trades[0].price;
+    for (const t of l.trades) {
+      if (t.ts <= cutoff) ref = t.price;
+      else break;
+    }
+    return ref > 0 ? ((l.price - ref) / ref) * 100 : 0;
+  }
+
+  summary(l: Launch) {
+    const phase = this.phase(l);
+    return {
+      id: l.id,
+      token: l.token,
+      name: l.name,
+      symbol: l.symbol,
+      creator: creatorHandle(l.creator),
+      creatorAddress: truncate(l.creator),
+      price: l.price,
+      mcap: this.mcap(l),
+      change: round(this.change24h(l), 2),
+      volume: l.volume,
+      target: l.targetMcap,
+      progress: l.targetMcap > 0 ? Math.min(1, this.mcap(l) / l.targetMcap) : 0,
+      bond: l.bond,
+      deadline: l.deadline,
+      createdAt: l.createdAt,
+      phase,
+      committedTotal: l.committedTotal,
+      bets: l.commitCount,
+      bettors: l.bettors.size,
+      // Side totals only become meaningful once the reveal window opens; before that they're sealed.
+      revealed:
+        phase === "commit"
+          ? null
+          : { count: l.revealedCount, survive: l.revealedSurvive, doom: l.revealedDoom },
+      settled: l.settled,
+      survived: l.survived ?? null,
+      twapMcap: l.twapMcap ?? null,
+    };
+  }
+
+  detail(l: Launch) {
+    const recent = l.trades.slice(-50).reverse().map((t) => ({
+      trader: truncate(t.trader),
+      isBuy: t.isBuy,
+      bnb: t.bnb,
+      tokens: t.tokens,
+      price: t.price,
+      ts: t.ts,
+      tx: t.tx,
+    }));
+    return { ...this.summary(l), recentTrades: recent, priceSeries: priceSeries(l) };
+  }
+
+  list() {
+    return [...this.launches.values()].sort((a, b) => b.createdAt - a.createdAt);
+  }
+
+  stats() {
+    const all = this.list();
+    const settled = all.filter((l) => l.settled);
+    const survived = settled.filter((l) => l.survived).length;
+    const tvl = all
+      .filter((l) => !l.settled)
+      .reduce((s, l) => s + l.committedTotal + l.bond, 0);
+    return {
+      tvl: round(tvl, 4),
+      launches: all.length,
+      live: all.length - settled.length,
+      settled: settled.length,
+      totalBets: all.reduce((s, l) => s + l.commitCount, 0),
+      totalVolume: round(all.reduce((s, l) => s + l.volume, 0), 4),
+      survivalRate: settled.length ? round(survived / settled.length, 4) : 0,
+    };
+  }
+
+  creators() {
+    const map = new Map<string, Launch[]>();
+    for (const l of this.launches.values()) {
+      const k = l.creator.toLowerCase();
+      if (!map.has(k)) map.set(k, []);
+      map.get(k)!.push(l);
+    }
+    return [...map.entries()]
+      .map(([addr, ls]) => creatorRow(addr, ls))
+      .sort((a, b) => b.survived - a.survived || b.rate - a.rate || b.launched - a.launched);
+  }
+
+  /** Lookup by full address or by anonymized handle (creator-xxxx). */
+  creator(key: string) {
+    const k = key.toLowerCase();
+    const match = (c: string) => c.toLowerCase() === k || creatorHandle(c) === k;
+    const ls = [...this.launches.values()].filter((l) => match(l.creator));
+    if (!ls.length) return null;
+    return { ...creatorRow(ls[0].creator, ls), launches: ls.map((l) => this.summary(l)) };
+  }
+}
+
+function creatorRow(addr: string, ls: Launch[]) {
+  const settled = ls.filter((l) => l.settled);
+  const survived = settled.filter((l) => l.survived).length;
+  return {
+    handle: creatorHandle(addr),
+    address: truncate(addr),
+    launched: ls.length,
+    settled: settled.length,
+    survived,
+    doomed: settled.length - survived,
+    rate: settled.length ? round(survived / settled.length, 4) : 0,
+    bonded: round(ls.reduce((s, l) => s + l.bond, 0), 4),
+  };
+}
+
+/** Bucketed close-price series (max ~120 points) for charts. */
+function priceSeries(l: Launch) {
+  if (!l.trades.length) return [{ t: l.createdAt, p: 0 }];
+  const start = l.createdAt;
+  const end = Math.max(l.trades[l.trades.length - 1].ts, start + 60);
+  const buckets = 120;
+  const step = Math.max(60, Math.ceil((end - start) / buckets));
+  const out: { t: number; p: number; v: number }[] = [];
+  let i = 0;
+  let last = l.trades[0].price;
+  for (let t = start; t <= end + step; t += step) {
+    let v = 0;
+    while (i < l.trades.length && l.trades[i].ts < t + step) {
+      last = l.trades[i].price;
+      v += l.trades[i].bnb;
+      i++;
+    }
+    out.push({ t, p: last, v: round(v, 6) });
+  }
+  return out;
+}
+
+export const creatorHandle = (addr: string) => `creator-${addr.toLowerCase().slice(2, 6)}`;
+export const truncate = (addr: string) => (addr.length > 10 ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : addr);
+export const round = (n: number, d: number) => Math.round(n * 10 ** d) / 10 ** d;
+
+export const store = new Store();
